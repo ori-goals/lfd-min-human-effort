@@ -1,6 +1,6 @@
 <?xml version='1.0'?>
 <sdf version='1.6'>
-  <model name='base_box_1'>
+  <model name='table1'>
     <static>true</static>
     <link name='link_3'>
       <pose frame=''>0 -0 0 0 -0 0</pose>
@@ -103,7 +103,7 @@
     <allow_auto_disable>1</allow_auto_disable>
     <include>
       <uri>model://hokuyo_mod</uri>
-      <pose>0.2 0 0.3 0 0 0</pose>
+      <pose>-0.3 0 0.19 0 0 0</pose>
     </include>
     <joint name="hokuyo_joint" type="revolute">
       <child>hokuyo::link</child>
