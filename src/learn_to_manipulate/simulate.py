@@ -5,7 +5,7 @@ import controller_manager_msgs.srv
 import trajectory_msgs.msg
 import os.path
 from hsrb_interface import geometry
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseWithCovarianceStamped
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
 
@@ -14,6 +14,7 @@ class Simulate(object):
         rospy.init_node('learn_to_manipulate')
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
+        self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
 
     def run_new_episode(self):
         self.spawn_objects()
@@ -24,7 +25,9 @@ class Simulate(object):
         self.whole_body.move_to_neutral()
         self.whole_body.linear_weight = 100
         self.whole_body.angular_weight = 100
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.6,y=0.1,z=0.7,ei=3.14, ej=0.0, ek=0.5)], ref_frame_id='map')
+        self.whole_body.end_effector_frame = 'hand_palm_link'
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.9,ei=0.0, ej=0.0, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.5,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
 
     def spawn_objects(self):
 
@@ -34,6 +37,17 @@ class Simulate(object):
         state = ModelState(model_name='hsrb', reference_frame='map')
         set_model_state_prox(state)
         self.whole_body.move_to_neutral()
+
+        # reset estimated location
+        pose = PoseWithCovarianceStamped()
+        pose.header.stamp = rospy.Time.now()
+        pose.header.frame_id = 'map'
+        pose.pose.covariance = [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0,
+                                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942]
+        pose.pose.pose.orientation.w = 1.0
+        self.initial_pose_pub.publish(pose)
 
         self.spawn_table()
         self.spawn_block()
