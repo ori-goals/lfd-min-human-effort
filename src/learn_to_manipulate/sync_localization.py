@@ -31,7 +31,7 @@ class Sync(object):
                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942]
             pose.pose.pose = resp1.pose
             self.initial_pose_pub.publish(pose)
-            rospy.sleep(0.2)
+            rospy.sleep(0.5)
 
 if __name__ == "__main__":
     sync = Sync()

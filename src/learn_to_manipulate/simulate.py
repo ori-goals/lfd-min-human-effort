@@ -17,8 +17,11 @@ class Simulate(object):
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
 
     def run_new_episode(self):
-        self.spawn_objects()
+        self.reset_hsrb()
+        self.spawn_table()
         self.set_arm_initial()
+        self.spawn_block()
+        self.control_arm()
 
     def set_arm_initial(self):
         self.whole_body.move_to_neutral()
@@ -26,13 +29,29 @@ class Simulate(object):
         self.whole_body.angular_weight = 500
         self.whole_body.end_effector_frame = 'hand_palm_link'
         self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.9,ei=0.0, ej=0.0, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.0,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.45,y=0.0,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.5,y=0.0,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.55,y=1.0,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.55,y=0.15,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.0,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
 
-    def spawn_objects(self):
+
+    def control_arm(self):
+        self.whole_body.linear_weight = 50
+        self.whole_body.angular_weight = 50
+        self.whole_body.end_effector_frame = 'hand_palm_link'
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.45,y=0.0,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.5,y=0.0,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.6,y=0.1,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.65,y=0.0,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.75,y=-0.05,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.85,y=-0.05,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
+
+    def reset_hsrb(self):
+        rospy.wait_for_service('/gazebo/get_world_properties')
+        get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
+        world = get_world_properties_prox()
+
+        if 'block' in world.model_names:
+            rospy.wait_for_service('/gazebo/delete_model')
+            delete_model_prox = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
+            delete_model_prox('block')
 
         # reset the location of the hsrb
         self.whole_body.move_to_neutral()
@@ -52,9 +71,6 @@ class Simulate(object):
                                  0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942]
         pose.pose.pose.orientation.w = 1.0
         self.initial_pose_pub.publish(pose)
-
-        self.spawn_table()
-        self.spawn_block()
 
     def spawn_table(self):
         rospy.wait_for_service('/gazebo/get_world_properties')
@@ -78,4 +94,16 @@ class Simulate(object):
 
 
     def spawn_block(self):
-        pass
+        my_path = os.path.abspath(os.path.dirname(__file__))
+        path = os.path.join(my_path, "../../models/block_30/model.sdf")
+        f = open(path,'r')
+        sdf = f.read()
+
+        initial_pose = Pose()
+        initial_pose.position.x = 0.55
+        initial_pose.position.y = 0.0
+        initial_pose.position.z = 0.6
+
+        rospy.wait_for_service('gazebo/spawn_sdf_model')
+        spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
+        spawn_model_prox("block", sdf, "simulation", initial_pose, "world")
