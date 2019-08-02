@@ -1,0 +1,170 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="namespace" default="/hsrb" />
+  <arg name="sim" default="false" />
+
+  <remap from="/camera/depth_registered/points" to="$(arg namespace)/head_rgbd_sensor/depth_registered/rectified_points"/>
+  <!-- ##### Navigation settings ##### -->
+  <!-- map file setting (can be overriden) -->
+  <arg name="map" default="$(optenv ROS_HOME ~/.ros)/map/map.yaml" />
+
+  <!-- tf name parameter -->
+  <param name="robot_tf_name" value="base_footprint"/>
+  <param name="odom_tf_name" value="odom"/>
+  <param name="localization_score_limit" value="-0.27"/>
+
+  <!-- base_local_planner -->
+  <node name="base_path_planner" pkg="tmc_base_path_planner" type="base_path_planner">
+    <param name="exclusive_size" value="0.2"/>
+    <param name="potential_size" value="0.3"/>
+    <param name="replan_threshold" value="0.15"/>
+    <param name="distance_threshold" value="0.08"/>
+    <param name="grid_error" value="0.01"/>
+    <param name="max_span_of_get_global_pose" value="1.0"/>
+    <param name="max_span_of_get_dynamic_map" value="2.0"/>
+    <param name="num_frame_threshold" value="120"/>
+    <param name="update_sub_goal_threshold" value="3.0"/>
+  </node>
+
+  <!-- omni_path_follower -->
+  <node name="omni_path_follower" pkg="tmc_omni_path_follower" type="omni_path_follower">
+    <rosparam command="load" file="$(find tmc_omni_path_follower)/config/omni_path_follower_config.yaml" />
+    <param name="base_max_linear_velocity" value="0.2" />
+    <param name="base_max_angular_velocity" value="0.5"/>
+    <param name="base_max_linear_acceleration" value="0.3" />
+    <param name="base_max_angular_acceleration" value="0.5" />
+    <param name="base_linear_deceleration_near_goal" value="0.4"/>
+    <param name="base_linear_velocity_margin" value="0.02"/>
+    <param name="interpolation_number" value="10"/>
+    <param name="linear_p_gain" value="1.0" />
+    <param name="angular_p_gain" value="1.0" />
+    <param name="path_length_threshold" value="1.0"/>
+    <param name="goal_area_length" value="0.5"/>
+    <param name="goal_line_length" value="0.05"/>
+    <param name="goal_stop_error_length" value="0.01"/>
+    <param name="goal_stop_error_angle" value="0.01"/>
+  </node>
+
+  <!-- pose_integrator -->
+  <node name="pose_integrator"      pkg="tmc_pose_integrator" type="pose_integrator">
+    <rosparam command="load" file="$(find tmc_pose_integrator)/config/pose_integrator.yaml" />
+    <param name="cycle_time" value="0.01"/>
+    <param name="convergence_time" value="1.0"/>
+    <remap from="/odometry" to="$(arg namespace)/odom_ground_truth" />
+  </node>
+
+  <!-- base_rviz_wrapper -->
+  <node name="base_rviz_wrapper"      pkg="tmc_base_visualizer" type="base_rviz_wrapper">
+    <remap from="/odometry" to="odom" />
+  </node>
+
+  <!-- grid_map_server -->
+  <node name="grid_map_server" pkg="tmc_grid_map_server" type="grid_map_server" args="$(arg map)"/>
+
+  <!-- map_merger -->
+  <!-- nodelet only for robot -->
+  <arg name="manager_namespace" default="$(arg namespace)/head_rgbd_sensor" />
+  <node pkg="nodelet" name="tmc_map_merger" type="nodelet"
+        args="load tmc_map_merger/MapMergerNodelet $(arg manager_namespace)/head_rgbd_sensor_nodelet_manager"
+        unless="$(arg sim)">
+    <remap from="$(arg manager_namespace)/merged_map" to="dynamic_obstacle_map" />
+    <remap from="$(arg manager_namespace)/hsrb/head_rgbd_sensor/depth_registered/rectified_points"
+           to="hsrb/head_rgbd_sensor/depth_registered/rectified_points" />
+    <remap from="$(arg manager_namespace)/hsrb/base_scan" to="hsrb/base_scan" />
+    <rosparam command="load" file="$(find tmc_map_merger)/config/tmc_map_merger_sample.yaml" />
+  </node>
+  <!-- node for simulation -->
+  <node name="tmc_map_merger" pkg="tmc_map_merger" type="map_merger_node" if="$(arg sim)">
+    <remap from="merged_map" to="/dynamic_obstacle_map" />
+    <rosparam command="load" file="$(find tmc_map_merger)/config/tmc_map_merger_sample.yaml" />
+  </node>
+
+  <!-- laser_2d_localizer -->
+  <node name="laser_2d_localizer" pkg="tmc_laser_2d_localizer" type="laser_2d_localizer">
+    <rosparam file="$(find tmc_laser_2d_localizer)/config/laser_2d_localizer.yaml" command="load"/>
+    <!-- initial pose -->
+    <param name="init_x" value="0.0"/>
+    <param name="init_y" value="0.0"/>
+    <param name="init_theta_deg" value="0.0"/>
+    <remap from="/odometry" to="$(arg namespace)/odom_ground_truth" />
+    <!-- motion noise -->
+    <param name="standard_deviation_xy_to_yx" value="0.0001"/>
+    <param name="standard_deviation_xy_to_xy" value="0.00005"/>
+    <param name="standard_deviation_xy_to_theta" value="0.0001"/>
+    <param name="standard_deviation_theta_to_xy" value="0.0001"/>
+    <param name="standard_deviation_theta_to_theta" value="0.00005"/>
+    <param name="odometry_tf_name" value="base_footprint"/>
+    <param name="map_tf_name" value="odom"/>
+  </node>
+
+  <!-- move base -->
+  <node pkg="tmc_move_base" type="move_base_node" name="move_base">
+    <param name="planning_timeout" value="20.0"/>
+    <remap from="move_base_simple/goal" to="/goal"/>
+  </node>
+
+  <!-- action_move_base -->
+  <include file="$(find tmc_action_move_base)/launch/action_move_base_default.launch" />
+
+  <!-- scan to cloud -->
+  <node pkg="scan_to_cloud_converter" name="scan_to_cloud_converter" type="scan_to_cloud_converter_node">
+    <remap from="/scan" to="$(arg namespace)/base_scan" />
+    <remap from="cloud" to="urg_cloud" />
+  </node>
+
+  <!-- point_cloud_extractor -->
+  <include file="$(find tmc_point_cloud_extractor)/launch/point_cloud_extractor.launch">
+    <arg name="min_z" value="0.005" />
+    <arg name="max_z" value="0.55" />
+    <arg name="in_topic" value="urg_cloud"/>
+  </include>
+
+  <!-- 視点制御（頭部Pan回転）を起動 -->
+  <node pkg="tmc_viewpoint_controller" name="viewpoint_controller" type="viewpoint_controller">
+    <param name="joint_states" value="/hsrb/joint_states" type="string" />
+    <param name="command" value="/hsrb/head_trajectory_controller/command" type="string" />
+    <param name="map_frame" value="map" />
+    <param name="base_frame" value="/base_footprint" />
+    <param name="focus_path_length" value="0.7" />
+    <param name="max_rotation_once" value="3.14" />
+    <param name="rate" value="10" />
+    <param name="fixed_neck_tilt_angle" value="-0.5" />
+  </node>
+
+  <!-- マーカー自己位置推定ノード -->
+  <node name="marker_based_localizer" pkg="tmc_marker_based_localizer" type="marker_based_localizer">
+    <param name="travel_distance_threshold" value="0.0"/>
+    <param name="marker_to_base_distance_threshold" value="1.8"/>
+    <remap from="/localized_pose" to="/laser_2d_correct_pose"/>
+    <remap from="/odometry" to="$(arg namespace)/odom_ground_truth"/>
+    <remap from="/marker/object_info" to="/recognized_object"/>
+    <remap from="/odom" to="$(arg namespace)/odom_ground_truth"/>
+    <remap from="/joint_states" to="$(arg namespace)/joint_states"/>
+    <rosparam param="joints_list" >
+      - base_l_drive_wheel_joint
+      - base_r_drive_wheel_joint
+      - base_roll_joint
+      - head_pan_joint
+      - head_tilt_joint
+      - arm_lift_joint
+    </rosparam>
+    <param name="joint_stopping_vel" value="0.005"/>
+  </node>
+
+  <!-- safety_velocity_limiter -->
+  <node pkg="tmc_safety_velocity_limiter" name="safety_velocity_limiter" type="safety_velocity_limiter">
+    <param name="enable_function" value="false" type="bool" />
+    <rosparam command="load" file="$(find tmc_safety_velocity_limiter)/config/virtual_bumper.yaml" />
+    <remap from="obstacle_cloud" to="urg_cloud" />
+    <remap from="input_velocity" to="base_velocity" />
+    <remap from="output_velocity" to="$(arg namespace)/command_velocity_autonomy" />
+  </node>
+
+  <!-- velocity_switcher -->
+  <node pkg="tmc_velocity_switcher" name="velocity_switcher" type="velocity_switcher">
+    <rosparam command="load" file="$(find tmc_velocity_switcher)/config/input_velocities.yaml" />
+    <remap from="velocity_1" to="$(arg namespace)/command_velocity_teleop" />
+    <remap from="velocity_2" to="$(arg namespace)/command_velocity_autonomy" />
+    <remap from="output_velocity" to="$(arg namespace)/command_velocity" />
+  </node>
+</launch>

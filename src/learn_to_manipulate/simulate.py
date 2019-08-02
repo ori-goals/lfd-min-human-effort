@@ -18,20 +18,24 @@ class Simulate(object):
 
     def run_new_episode(self):
         self.spawn_objects()
-        self.control_arm()
+        self.set_arm_initial()
 
-    def control_arm(self):
-        #self.whole_body.move_end_effector_by_line((0, 0, 1), 0.05)
+    def set_arm_initial(self):
         self.whole_body.move_to_neutral()
-        self.whole_body.linear_weight = 100
-        self.whole_body.angular_weight = 100
+        self.whole_body.linear_weight = 500
+        self.whole_body.angular_weight = 500
         self.whole_body.end_effector_frame = 'hand_palm_link'
         self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.9,ei=0.0, ej=0.0, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.5,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.0,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.45,y=0.0,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.5,y=0.0,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.55,y=1.0,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.55,y=0.15,z=0.45,ei=0.0, ej=-1.57, ek=3.14)], ref_frame_id='map')
 
     def spawn_objects(self):
 
         # reset the location of the hsrb
+        self.whole_body.move_to_neutral()
         rospy.wait_for_service('/gazebo/set_model_state')
         set_model_state_prox = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
         state = ModelState(model_name='hsrb', reference_frame='map')
@@ -64,7 +68,7 @@ class Simulate(object):
             sdf = f.read()
 
             initial_pose = Pose()
-            initial_pose.position.x = 0.5
+            initial_pose.position.x = 0.7
             initial_pose.position.y = 0.0
             initial_pose.position.z = 0.2
 
