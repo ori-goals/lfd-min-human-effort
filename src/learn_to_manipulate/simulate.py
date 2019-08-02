@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-import hsrb_interface
 import rospy
+import hsrb_interface
 import controller_manager_msgs.srv
 import trajectory_msgs.msg
 import os.path
@@ -10,8 +10,8 @@ from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
 
 class Simulate(object):
-    def __init__(self):
-        rospy.init_node('learn_to_manipulate')
+    def __init__(self, controllers):
+        self.controllers = controllers
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
@@ -19,29 +19,13 @@ class Simulate(object):
     def run_new_episode(self):
         self.reset_hsrb()
         self.spawn_table()
-        self.set_arm_initial()
+        controller = self.choose_controller()
+        controller.set_arm_initial()
         self.spawn_block()
-        self.control_arm()
+        controller.control_episode()
 
-    def set_arm_initial(self):
-        self.whole_body.move_to_neutral()
-        self.whole_body.linear_weight = 500
-        self.whole_body.angular_weight = 500
-        self.whole_body.end_effector_frame = 'hand_palm_link'
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.9,ei=0.0, ej=0.0, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.0,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
-
-
-    def control_arm(self):
-        self.whole_body.linear_weight = 50
-        self.whole_body.angular_weight = 50
-        self.whole_body.end_effector_frame = 'hand_palm_link'
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.45,y=0.0,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.5,y=0.0,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.6,y=0.1,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.65,y=0.0,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.75,y=-0.05,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.85,y=-0.05,z=0.46,ei=0.0, ej=-1.7, ek=3.14)], ref_frame_id='map')
+    def choose_controller(self):
+        return self.controllers[0]
 
     def reset_hsrb(self):
         rospy.wait_for_service('/gazebo/get_world_properties')
