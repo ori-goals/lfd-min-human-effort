@@ -8,8 +8,10 @@ import os.path
 import numpy as np
 from hsrb_interface import geometry
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, Twist
+from sensor_msgs.msg import LaserScan
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
+from learn_to_manipulate.actor_nn import ActorNN
 
 
 def qv_rotate(q1, v1):
@@ -28,6 +30,8 @@ class Controller(object):
         self.steps_max = 50
         self.time_step = 0.1
         self.sim = sim
+        rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
+
 
     def set_arm_initial(self):
         self.whole_body.move_to_neutral()
@@ -125,13 +129,22 @@ class Controller(object):
         else:
             return False
 
+    def store_laser(self, data):
+        scan = np.array(data.ranges)
+        range_max = 5.0
+        indexes = scan > range_max
+        scan[indexes] = range_max
+        self.current_laser_scan = scan
+
+    def get_latest_scan(self):
+        pass
+
     def execute_pose(self, pose):
         self.whole_body.linear_weight = 50
         self.whole_body.angular_weight = 50
         self.whole_body.end_effector_frame = 'hand_palm_link'
         self.whole_body.move_end_effector_pose([geometry.pose(x=pose['x'],y=pose['y'],z=pose['z'],
                                                 ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
-
 
 
 class HandCodedController(Controller):
@@ -164,3 +177,16 @@ class KeypadController(Controller):
         dx = self.time_step*self.key_vel.linear.x
         dy = self.time_step*self.key_vel.angular.z
         return {'x':dx, 'y':dy}
+
+
+class LearntController(Controller):
+    def __init__(self, sim):
+        Controller.__init__(self, sim)
+        self.controller_type = 'learnt'
+        nominal_means = np.array([0.02, 0.0])
+        nominal_sigma_exps = np.array([-5.5, -5.5])
+        self.policy = ActorNN(nominal_means, nominal_sigma_exps)
+
+    def get_delta(self, step):
+        action = self.policy.get_action(self.current_laser_scan)
+        return {'x':action[0], 'y':action[1]}

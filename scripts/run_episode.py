@@ -6,6 +6,6 @@ from learn_to_manipulate.controller import *
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate')
     sim = Simulation()
-    controllers = [KeypadController(sim)]
+    controllers = [LearntController(sim)]
     sim.controllers = controllers
     sim.run_new_episode()
