@@ -14,7 +14,7 @@ class Simulation(object):
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
-        self.block_width = 0.08
+        self.block_width = 0.1
         self.goal_width_x = 0.2
         self.goal_centre_x = 0.9
 

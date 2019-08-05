@@ -103,7 +103,7 @@
     <allow_auto_disable>1</allow_auto_disable>
     <include>
       <uri>model://hokuyo_mod</uri>
-      <pose>-0.3 0 0.19 0 0 0</pose>
+      <pose>-0.3 0 0.183 0 0 0</pose>
     </include>
     <joint name="hokuyo_joint" type="revolute">
       <child>hokuyo::link</child>

@@ -7,7 +7,7 @@ import trajectory_msgs.msg
 import os.path
 import numpy as np
 from hsrb_interface import geometry
-from geometry_msgs.msg import Pose, PoseWithCovarianceStamped
+from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, Twist
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
 
@@ -21,11 +21,12 @@ def qv_rotate(q1, v1):
 
 class Controller(object):
     def __init__(self, sim):
-        self.init_pose = {'x':0.4, 'y':0.0, 'z':0.46}
+        self.init_pose = {'x':0.4, 'y':0.0, 'z':0.453}
         self.init_ori = {'i':0.0, 'j':-1.7, 'k':3.14}
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
-        self.steps_max = 30
+        self.steps_max = 50
+        self.time_step = 0.1
         self.sim = sim
 
     def set_arm_initial(self):
@@ -42,11 +43,33 @@ class Controller(object):
         step = 0
         previous_pose = self.init_pose
         while episode_running:
-            next_pose = self.get_next_pose(step, previous_pose)
+            next_pose, moved = self.get_next_pose(step, previous_pose)
+
+            # if there is no movement sleep and try again
+            if not moved:
+                rospy.sleep(0.1)
+                continue
             self.execute_pose(next_pose)
             episode_success, episode_running = self.check_episode_status(step)
             step += 1
             previous_pose = next_pose
+        self.update_controller()
+        return episode_success
+
+    def get_next_pose(self, step, previous_pose):
+
+        # if there is no movement return false
+        delta = self.get_delta(step)
+        if abs(delta['x']) < 0.0001 and abs(delta['y']) < 0.0001:
+            return previous_pose, False
+
+        pose = previous_pose
+        pose['x'] += delta['x']
+        pose['y'] += delta['y']
+        return pose, True
+
+    def update_controller(self):
+        pass
 
     def check_episode_status(self, step):
 
@@ -109,21 +132,12 @@ class Controller(object):
         self.whole_body.move_end_effector_pose([geometry.pose(x=pose['x'],y=pose['y'],z=pose['z'],
                                                 ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
 
-    def get_next_pose(self):
-        pass
 
 
 class HandCodedController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.controller_type = 'hand_coded'
-
-    def get_next_pose(self, step, previous_pose):
-        delta = self.get_delta(step)
-        pose = previous_pose
-        pose['x'] += delta['x']
-        pose['y'] += delta['y']
-        return pose
 
     def get_delta(self, step):
         dx = [0.04, 0.04, 0.04, 0.03, 0.05, 0.03, 0.05, 0.05, 0.05]
@@ -135,3 +149,18 @@ class HandCodedController(Controller):
             return True
         else:
             return False
+
+class KeypadController(Controller):
+    def __init__(self, sim):
+        Controller.__init__(self, sim)
+        self.controller_type = 'key_teleop'
+        rospy.Subscriber("key_vel", Twist, self.store_key_vel)
+        self.key_vel = Twist()
+
+    def store_key_vel(self, data):
+        self.key_vel = data
+
+    def get_delta(self, step):
+        dx = self.time_step*self.key_vel.linear.x
+        dy = self.time_step*self.key_vel.angular.z
+        return {'x':dx, 'y':dy}
