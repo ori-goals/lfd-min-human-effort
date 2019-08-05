@@ -24,4 +24,6 @@
     <arg name="world_name" value="$(find tmc_gazebo_worlds)/worlds/empty$(arg world_suffix).world"/>
     <arg name="robot_pos" value="-x 0 -y 0 -z 0 -Y 0" />
   </include>
+
+  <node name="map_to_hokuyo" pkg="tf" type="static_transform_publisher" args="0.4 0 0.41 0 0 0 /map /hokuyo_link 100" />
 </launch>

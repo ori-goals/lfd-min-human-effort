@@ -9,12 +9,14 @@ from geometry_msgs.msg import Pose, PoseWithCovarianceStamped
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
 
-class Simulate(object):
-    def __init__(self, controllers):
-        self.controllers = controllers
+class Simulation(object):
+    def __init__(self):
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
+        self.block_width = 0.08
+        self.goal_width_x = 0.2
+        self.goal_centre_x = 0.9
 
     def run_new_episode(self):
         self.reset_hsrb()
@@ -65,21 +67,32 @@ class Simulate(object):
             my_path = os.path.abspath(os.path.dirname(__file__))
             path = os.path.join(my_path, "../../models/table1/model.sdf")
             f = open(path,'r')
-            sdf = f.read()
+            table_sdf = f.read()
 
-            initial_pose = Pose()
-            initial_pose.position.x = 0.7
-            initial_pose.position.y = 0.0
-            initial_pose.position.z = 0.2
+            table_initial_pose = Pose()
+            table_initial_pose.position.x = 0.7
+            table_initial_pose.position.y = 0.0
+            table_initial_pose.position.z = 0.2
+
+            path = os.path.join(my_path, "../../models/goal/model.sdf")
+            f = open(path,'r')
+            goal_sdf = f.read()
+
+            self.goal_pose = Pose()
+            self.goal_pose.position.x = self.goal_centre_x
+            self.goal_pose.position.y = 0.0
+            self.goal_pose.position.z = 0.40
 
             rospy.wait_for_service('gazebo/spawn_sdf_model')
             spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
-            spawn_model_prox("table", sdf, "simulation", initial_pose, "world")
-
+            spawn_model_prox("table", table_sdf, "simulation", table_initial_pose, "world")
+            spawn_model_prox("goal", goal_sdf, "simulation", self.goal_pose, "world")
 
     def spawn_block(self):
+        block_name = 'block_30'
+        self.block_length = float("0." + block_name.split('_')[1])
         my_path = os.path.abspath(os.path.dirname(__file__))
-        path = os.path.join(my_path, "../../models/block_30/model.sdf")
+        path = os.path.join(my_path, "../../models/" + block_name + "/model.sdf")
         f = open(path,'r')
         sdf = f.read()
 
