@@ -38,9 +38,9 @@ class Experience(object):
         self.episode_df.loc[len(self.episode_df)] = [state, action['x'], action['y'], -1.0, -1.0]
 
     def end_episode(self, result):
-        self.store_episode_result(result)
+        self.store_episode_result(result['success'])
         episode = Episode(df = self.episode_df, confidence = self.episode_confidence,
-            sigma = self.episode_confidence_sigma, result = result, failure_mode = '',
+            sigma = self.episode_confidence_sigma, result = result['success'], failure_mode = result['failure_mode'],
             case_number = self.episode_case_number)
         self.episode_list.append(episode)
         self.add_to_replay_buffer(episode)

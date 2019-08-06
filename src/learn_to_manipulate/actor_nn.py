@@ -46,8 +46,8 @@ class ActorNN():
         sigmas = math.e**np.array([dx_output[1]+self.nominal_sigma_exps[0], dy_output[1]+self.nominal_sigma_exps[1]])
         dx = np.random.normal(means[0], sigmas[0])
         dy = np.random.normal(means[1], sigmas[1])
-        print("dx: %.4f (mean: %.4f, sigma: %.4f), dy: %.4f (mean: %.4f, sigma: %.4f)"
-             % (dx, means[0], sigmas[0], dy, means[1], sigmas[1]))
+        #print("dx: %.4f (mean: %.4f, sigma: %.4f), dy: %.4f (mean: %.4f, sigma: %.4f)"
+        #     % (dx, means[0], sigmas[0], dy, means[1], sigmas[1]))
         return [dx, dy]
 
     def forward_pass(self, x_input, weights):

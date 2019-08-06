@@ -100,9 +100,9 @@ class Controller(object):
 
         # if the block has fallen off the table
         if block_pose.position.z < 0.3:
-            episode_success = False
+            result = {'success':False, 'failure_mode':'falling'}
             episode_running = False
-            return episode_success, episode_running
+            return result, episode_running
 
         # if all of the block corners are in the goal region
         block_in_goal = True
@@ -113,20 +113,19 @@ class Controller(object):
                 block_in_goal = False
 
         if block_in_goal:
-            print('block in goal!')
-            episode_success = True
+            result = {'success':True, 'failure_mode':''}
             episode_running = False
-            return episode_success, episode_running
+            return result, episode_running
 
         # if the maximum step count is exceeded
         if self.max_steps(step):
-            episode_success = False
+            result = {'success':False, 'failure_mode':'timeout'}
             episode_running = False
-            return episode_success, episode_running
+            return result, episode_running
         else:
-            episode_success = False
+            result = {'success':False, 'failure_mode':''}
             episode_running = True
-            return episode_success, episode_running
+            return result, episode_running
 
 
     def max_steps(self, step):

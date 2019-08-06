@@ -24,8 +24,12 @@ class Simulation(object):
         controller = self.choose_controller()
         controller.set_arm_initial()
         self.spawn_block()
-        print("Starting new episode!")
-        controller.run_episode(case_number)
+        print("Starting new episode with controller type: %s" % (controller.controller_type))
+        result = controller.run_episode(case_number)
+        if result['success']:
+            print('Episode succeeded.')
+        else:
+            print('Episode failed by %s\n' % (result['failure_mode']))
 
     def choose_controller(self):
         return self.controllers[0]
