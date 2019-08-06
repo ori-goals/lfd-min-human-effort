@@ -24,6 +24,7 @@ class Simulation(object):
         controller = self.choose_controller()
         controller.set_arm_initial()
         self.spawn_block()
+        print("Starting new episode!")
         controller.run_episode(case_number)
 
     def choose_controller(self):

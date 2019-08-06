@@ -10,3 +10,4 @@ if __name__ == "__main__" :
     sim.controllers = controllers
     case_number = 10
     sim.run_new_episode(case_number)
+    sim.run_new_episode(case_number)

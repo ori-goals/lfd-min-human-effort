@@ -2,6 +2,7 @@
 import hsrb_interface
 import rospy
 import tf
+import copy
 import controller_manager_msgs.srv
 import trajectory_msgs.msg
 import os.path
@@ -28,7 +29,7 @@ class Controller(object):
         self.init_ori = {'i':0.0, 'j':-1.7, 'k':3.14}
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
-        self.steps_max = 50
+        self.steps_max = 40
         self.time_step = 0.1
         self.sim = sim
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
@@ -151,6 +152,31 @@ class Controller(object):
         self.whole_body.move_end_effector_pose([geometry.pose(x=pose['x'],y=pose['y'],z=pose['z'],
                                                 ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
 
+    def get_state_value(self, state, experience):
+        alpha = copy.copy(experience.prior_alpha)
+        beta = copy.copy(experience.prior_beta)
+        length_scale = experience.length_scale
+
+        for index, row in experience.replay_buffer.iterrows():
+            old_state = np.array(row['state'])
+            state_delta = old_state - state
+
+            # calculate the difference between the two states
+            weight = np.exp(-1.0*(np.linalg.norm(state_delta/length_scale))**2)
+            if weight < 1e-7:
+                weight = 1e-7
+
+            # increment alpha for success and beta for failure
+            if int(round(row["return"])) == 1:
+                alpha = alpha + weight
+            else:
+                beta = beta + weight
+
+        value = alpha/(alpha + beta)
+        variance = alpha*beta/((alpha+beta)**2*(alpha+beta+1.0))
+        sigma = np.sqrt(variance)
+        return value, sigma
+
 
 class HandCodedController(Controller):
     def __init__(self, sim):
@@ -191,15 +217,11 @@ class LearntController(Controller):
         nominal_means = np.array([0.02, 0.0])
         nominal_sigma_exps = np.array([-5.5, -5.5])
         self.policy = ActorNN(nominal_means, nominal_sigma_exps)
-        self.exp = Experience(window_size = 50)
-
-    def get_confidence(self):
-        confidence = {'mean':0.5, 'sigma':0.2}
-        return confidence
+        self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 1.0)
 
     def begin_new_episode(self, case_number):
-        confidence = self.get_confidence()
-        self.exp.new_episode(confidence, case_number)
+        confidence, sigma = self.get_state_value(self.get_state(), self.exp)
+        self.exp.new_episode(confidence, sigma, case_number)
 
     def end_episode(self, result):
         self.exp.end_episode(result)

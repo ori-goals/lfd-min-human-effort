@@ -9,23 +9,29 @@ from std_msgs.msg import Bool, Float64, Int16, String
 
 
 class Episode():
-    def __init__(self, df, confidence, result, failure_mode, case_number):
-        self.df = df
+    def __init__(self, df, confidence, sigma, result, failure_mode, case_number):
+        self.episode_df = df
         self.confidence = confidence
+        self.sigma = sigma
         self.result = result
         self.failure_mode = failure_mode
         self.case_number = case_number
 
 class Experience(object):
-    def __init__(self, window_size):
+    def __init__(self, window_size, prior_alpha, prior_beta, length_scale):
         self.window_size = window_size
+        self.prior_alpha = prior_alpha
+        self.prior_beta = prior_beta
+        self.length_scale = length_scale
         self.col_names = ['state', 'dx', 'dy', 'reward', 'return']
+        self.replay_buffer = pd.DataFrame(columns = self.col_names)
         self.episode_list = []
         self.replay_buffer_episodes = []
 
-    def new_episode(self, episode_confidence, case_number):
+    def new_episode(self, episode_confidence, sigma, case_number):
         self.episode_df = pd.DataFrame(columns = self.col_names)
         self.episode_confidence = episode_confidence
+        self.episode_confidence_sigma = sigma
         self.episode_case_number = case_number
 
     def add_step(self, state, action):
@@ -33,9 +39,9 @@ class Experience(object):
 
     def end_episode(self, result):
         self.store_episode_result(result)
-        print(self.episode_df)
         episode = Episode(df = self.episode_df, confidence = self.episode_confidence,
-            result = result, failure_mode = '', case_number = self.episode_case_number)
+            sigma = self.episode_confidence_sigma, result = result, failure_mode = '',
+            case_number = self.episode_case_number)
         self.episode_list.append(episode)
         self.add_to_replay_buffer(episode)
 
@@ -46,10 +52,10 @@ class Experience(object):
         self.replay_buffer_episodes = self.replay_buffer_episodes[0:self.window_size]
 
         # construct the replay buffer for learner from the window of experience
-        self.replay_buffer_tuples = pd.DataFrame(columns = self.col_names)
+        self.replay_buffer = pd.DataFrame(columns = self.col_names)
         for episode in self.replay_buffer_episodes:
-            df_reverse = episode.df.reindex(index=episode.df.index[::-1])
-            self.replay_buffer_tuples = pd.concat([self.replay_buffer_tuples, df_reverse], ignore_index=True)
+            df_reverse = episode.episode_df.reindex(index=episode.episode_df.index[::-1])
+            self.replay_buffer = pd.concat([self.replay_buffer, df_reverse], ignore_index=True)
 
 
     def store_episode_result(self, result):
