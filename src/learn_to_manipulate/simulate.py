@@ -18,13 +18,13 @@ class Simulation(object):
         self.goal_width_x = 0.2
         self.goal_centre_x = 0.9
 
-    def run_new_episode(self):
+    def run_new_episode(self, case_number):
         self.reset_hsrb()
         self.spawn_table()
         controller = self.choose_controller()
         controller.set_arm_initial()
         self.spawn_block()
-        controller.control_episode()
+        controller.run_episode(case_number)
 
     def choose_controller(self):
         return self.controllers[0]

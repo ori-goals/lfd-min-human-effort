@@ -1,11 +1,10 @@
 import rospy, os, time, pickle, math, copy, torch
 import numpy as np
 import pandas as pd
-from ccbp import get_learner_state_value
 
 class Weights():
     def __init__(self, init_size):
-        self.d_in = 50
+        self.d_in = 52
         self.h1 = 6
         self.h2 = 4
         self.d_out = 2

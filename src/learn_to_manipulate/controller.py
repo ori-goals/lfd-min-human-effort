@@ -12,6 +12,7 @@ from sensor_msgs.msg import LaserScan
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
 from learn_to_manipulate.actor_nn import ActorNN
+from learn_to_manipulate.experience import Experience
 
 
 def qv_rotate(q1, v1):
@@ -41,24 +42,28 @@ class Controller(object):
         self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.9,ei=0.0, ej=0.0, ek=3.14)], ref_frame_id='map')
         self.whole_body.move_end_effector_pose([geometry.pose(x=self.init_pose['x'],y=self.init_pose['y'],z=self.init_pose['z'],
                                                 ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
+        self.pose = {'x':self.init_pose['x'], 'y':self.init_pose['y'], 'z':self.init_pose['z']}
 
-    def control_episode(self):
+    def begin_new_episode(self):
+        pass
+
+    def run_episode(self, case_number):
+        self.begin_new_episode(case_number)
         episode_running = True
         step = 0
-        previous_pose = self.init_pose
         while episode_running:
-            next_pose, moved = self.get_next_pose(step, previous_pose)
+            next_pose, moved = self.get_next_pose(step, self.pose)
 
             # if there is no movement sleep and try again
             if not moved:
                 rospy.sleep(0.1)
                 continue
             self.execute_pose(next_pose)
-            episode_success, episode_running = self.check_episode_status(step)
+            self.pose = next_pose
+            result, episode_running = self.check_episode_status(step)
             step += 1
-            previous_pose = next_pose
-        self.update_controller()
-        return episode_success
+        self.end_episode(result)
+        return result
 
     def get_next_pose(self, step, previous_pose):
 
@@ -72,7 +77,7 @@ class Controller(object):
         pose['y'] += delta['y']
         return pose, True
 
-    def update_controller(self):
+    def end_episode(self):
         pass
 
     def check_episode_status(self, step):
@@ -136,8 +141,8 @@ class Controller(object):
         scan[indexes] = range_max
         self.current_laser_scan = scan
 
-    def get_latest_scan(self):
-        pass
+    def get_state(self):
+        return self.current_laser_scan.tolist() + [self.pose['x'], self.pose['y']]
 
     def execute_pose(self, pose):
         self.whole_body.linear_weight = 50
@@ -186,7 +191,32 @@ class LearntController(Controller):
         nominal_means = np.array([0.02, 0.0])
         nominal_sigma_exps = np.array([-5.5, -5.5])
         self.policy = ActorNN(nominal_means, nominal_sigma_exps)
+        self.exp = Experience(window_size = 50)
 
-    def get_delta(self, step):
-        action = self.policy.get_action(self.current_laser_scan)
+    def get_confidence(self):
+        confidence = {'mean':0.5, 'sigma':0.2}
+        return confidence
+
+    def begin_new_episode(self, case_number):
+        confidence = self.get_confidence()
+        self.exp.new_episode(confidence, case_number)
+
+    def end_episode(self, result):
+        self.exp.end_episode(result)
+        self.update_controller()
+
+    def get_next_pose(self, step, pose):
+        state = self.get_state()
+        delta = self.get_delta(step, state)
+        self.exp.add_step(state, delta)
+
+        pose['x'] += delta['x']
+        pose['y'] += delta['y']
+        return pose, True
+
+    def get_delta(self, step, state):
+        action = self.policy.get_action(state)
         return {'x':action[0], 'y':action[1]}
+
+    def update_controller(self):
+        pass

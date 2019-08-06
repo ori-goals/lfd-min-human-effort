@@ -8,4 +8,5 @@ if __name__ == "__main__" :
     sim = Simulation()
     controllers = [LearntController(sim)]
     sim.controllers = controllers
-    sim.run_new_episode()
+    case_number = 10
+    sim.run_new_episode(case_number)
