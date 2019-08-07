@@ -81,7 +81,7 @@ class ActorNN():
         learning_rates = config.ac_learning_rates
         update_steps = config.rl_steps_per_frame
         td_max = config.td_max
-        print(len(replay_buffer_rl))
+
         # make the appropriate number of updates
         for update in range(0, update_steps*episode_length):
 
@@ -131,17 +131,16 @@ class ActorNN():
 
 
     def bc_update(self, demo_experience, config, episode_length):
-        print('bc_update')
+
         replay_buffer_demos = demo_experience.replay_buffer
         learning_rates = config.bc_learning_rates
         update_steps = config.bc_steps_per_frame
 
         # make the appropriate number of updates
         for update in range(0, update_steps*episode_length):
-            print(update)
+
             # randomly sample an experience from the replay buffer with preference for newer experiences
             ind = int(round(np.random.exponential(200)))
-            print(len(replay_buffer_demos))
             while ind >= len(replay_buffer_demos) - 1:
                 ind = int(round(np.random.exponential(200)))
 

@@ -22,7 +22,7 @@
         <pose frame=''>0 0 0 0 -0 0</pose>
         <geometry>
           <box>
-            <size>0.1 0.3 0.08</size>
+            <size>0.04 0.3 0.04</size>
           </box>
         </geometry>
         <material>
@@ -48,14 +48,14 @@
         <pose frame=''>0 0 0 0 -0 0</pose>
         <geometry>
           <box>
-            <size>0.1 0.30 0.08</size>
+            <size>0.04 0.30 0.04</size>
           </box>
         </geometry>
         <surface>
           <friction>
             <ode>
-              <mu>1</mu>
-              <mu2>1</mu2>
+              <mu>0.3</mu>
+              <mu2>0.3</mu2>
               <fdir1>0 0 0</fdir1>
               <slip1>0</slip1>
               <slip2>0</slip2>

@@ -14,9 +14,9 @@ class Simulation(object):
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
-        self.block_width = 0.1
-        self.goal_width_x = 0.2
-        self.goal_centre_x = 0.9
+        self.block_width = 0.04
+        self.goal_width_x = 0.001
+        self.goal_centre_x = 0.78
 
     def run_new_episode(self, case_number, controller_type = None):
         self.reset_hsrb()
@@ -88,7 +88,7 @@ class Simulation(object):
             table_sdf = f.read()
 
             table_initial_pose = Pose()
-            table_initial_pose.position.x = 0.7
+            table_initial_pose.position.x = 0.62
             table_initial_pose.position.y = 0.0
             table_initial_pose.position.z = 0.2
 
@@ -116,8 +116,11 @@ class Simulation(object):
 
         initial_pose = Pose()
         initial_pose.position.x = 0.55
-        initial_pose.position.y = 0.0
+        initial_pose.position.y = 0.05
         initial_pose.position.z = 0.6
+
+        initial_pose.orientation.z = 0.4226
+        initial_pose.orientation.w = 0.9063
 
         rospy.wait_for_service('gazebo/spawn_sdf_model')
         spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)

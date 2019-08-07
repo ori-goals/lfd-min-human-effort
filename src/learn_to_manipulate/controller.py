@@ -19,11 +19,12 @@ from learn_to_manipulate.utils import qv_rotate
 
 class Controller(object):
     def __init__(self, sim):
-        self.init_pose = {'x':0.4, 'y':0.0, 'z':0.453}
+        self.init_pose = {'x':0.3, 'y':0.0, 'z':0.461}
         self.init_ori = {'i':0.0, 'j':-1.7, 'k':3.14}
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
-        self.steps_max = 40
+        self.gripper = self.robot.get('gripper')
+        self.steps_max = 50
         self.time_step = 0.1
         self.sim = sim
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
@@ -34,12 +35,14 @@ class Controller(object):
         self.whole_body.linear_weight = 500
         self.whole_body.angular_weight = 500
         self.whole_body.end_effector_frame = 'hand_palm_link'
-        self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.9,ei=0.0, ej=0.0, ek=3.14)], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=0.35,y=0.1,z=0.9,ei=0.0, ej=0.0, ek=3.14)], ref_frame_id='map')
         self.whole_body.move_end_effector_pose([geometry.pose(x=self.init_pose['x'],y=self.init_pose['y'],z=self.init_pose['z'],
                                                 ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
         self.whole_body.move_end_effector_pose([geometry.pose(x=self.init_pose['x'],y=self.init_pose['y'],z=self.init_pose['z'],
                                                 ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
         self.pose = {'x':self.init_pose['x'], 'y':self.init_pose['y'], 'z':self.init_pose['z']}
+        self.gripper.command(0.0)
+        rospy.sleep(1.0)
 
     def begin_new_episode(self):
         pass
@@ -177,8 +180,8 @@ class TeleopController(Controller):
 
     def __init__(self, sim):
         Controller.__init__(self, sim)
-        self.config = self.Config(bc_learning_rates = [0.00001, 0.00001],
-                                bc_steps_per_frame = 5, td_max = 0.5)
+        self.config = self.Config(bc_learning_rates = [0.0005, 0.0005],
+                                bc_steps_per_frame = 100, td_max = 0.5)
         self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
 
     def begin_new_episode(self, case_number):
@@ -200,6 +203,7 @@ class TeleopController(Controller):
                 break
 
         if learnt_controller_exists:
+            print(self.exp.replay_buffer)
             learnt_controller.policy.bc_update(self.exp, self.config, episode_length)
 
 
@@ -230,7 +234,7 @@ class LearntController(Controller):
         Controller.__init__(self, sim)
         self.type = 'learnt'
         nominal_means = np.array([0.02, 0.0])
-        nominal_sigma_exps = np.array([-5.5, -5.5])
+        nominal_sigma_exps = np.array([-5.0, -5.0])
         self.policy = ActorNN(nominal_means, nominal_sigma_exps)
         self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 1.0)
         self.config = self.Config(rl_buffer_frames_min = 200, ac_learning_rates = [0.00001, 0.00001],
