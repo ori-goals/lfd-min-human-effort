@@ -24,12 +24,8 @@ class Simulation(object):
         controller = self.choose_controller(controller_type)
         controller.set_arm_initial()
         self.spawn_block()
-        print("Starting new episode with controller type: %s" % (controller.type))
         result = controller.run_episode(case_number)
-        if result['success']:
-            print('Episode succeeded.')
-        else:
-            print('Episode failed by %s\n' % (result['failure_mode']))
+
 
     def choose_controller(self, requested_type):
         if requested_type is not None:
@@ -116,8 +112,8 @@ class Simulation(object):
 
         initial_pose = Pose()
         initial_pose.position.x = 0.55
-        initial_pose.position.y = 0.05
-        initial_pose.position.z = 0.6
+        initial_pose.position.y = 0.08
+        initial_pose.position.z = 0.5
 
         initial_pose.orientation.z = 0.4226
         initial_pose.orientation.w = 0.9063
@@ -125,3 +121,4 @@ class Simulation(object):
         rospy.wait_for_service('gazebo/spawn_sdf_model')
         spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
         spawn_model_prox("block", sdf, "simulation", initial_pose, "world")
+        rospy.sleep(0.5)

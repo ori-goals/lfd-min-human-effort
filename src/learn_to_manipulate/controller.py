@@ -27,6 +27,7 @@ class Controller(object):
         self.steps_max = 50
         self.time_step = 0.1
         self.sim = sim
+        self.max_pose_x = 0.78
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
 
 
@@ -48,6 +49,7 @@ class Controller(object):
         pass
 
     def run_episode(self, case_number):
+        print("Starting new episode with controller type: %s" % (self.type))
         self.begin_new_episode(case_number)
         episode_running = True
         step = 0
@@ -60,19 +62,23 @@ class Controller(object):
                 continue
             self.execute_pose(next_pose)
             self.pose = next_pose
-            result, episode_running = self.check_episode_status(step)
+            result, episode_running = self.check_episode_status(step, next_pose)
             step += 1
+
+        if result['success']:
+            print('Episode succeeded.')
+        else:
+            print('Episode failed by %s\n' % (result['failure_mode']))
         self.end_episode(result)
         return result
 
     def get_next_pose(self, step, previous_pose):
-
         # if there is no movement return false
-        delta = self.get_delta(step)
+        state = self.get_state()
+        delta = self.get_delta(step, state)
         if abs(delta['x']) < 0.0001 and abs(delta['y']) < 0.0001:
             return previous_pose, False
 
-        state = self.get_state()
         self.exp.add_step(state, delta)
         pose = previous_pose
         pose['x'] += delta['x']
@@ -84,7 +90,7 @@ class Controller(object):
         episode_length = len(self.exp.episode_df)
         self.update_learnt_controller(result, episode_length)
 
-    def check_episode_status(self, step):
+    def check_episode_status(self, step, pose):
 
         episode_running = True
 
@@ -117,6 +123,12 @@ class Controller(object):
 
         if block_in_goal:
             result = {'success':True, 'failure_mode':''}
+            episode_running = False
+            return result, episode_running
+
+        # if the maximum x is exceeded
+        if pose['x'] > self.max_pose_x:
+            result = {'success':False, 'failure_mode':'max_x_exceeded'}
             episode_running = False
             return result, episode_running
 
@@ -160,7 +172,7 @@ class HandCodedController(Controller):
         Controller.__init__(self, sim)
         self.type = 'hand_coded'
 
-    def get_delta(self, step):
+    def get_delta(self, step, state):
         dx = [0.04, 0.04, 0.04, 0.03, 0.05, 0.03, 0.05, 0.05, 0.05]
         dy = [0.0, 0.0, -0.10, 0.05, 0.05, 0.02, 0.0, -0.05, 0.0]
         return {'x':dx[step], 'y':dy[step]}
@@ -180,8 +192,8 @@ class TeleopController(Controller):
 
     def __init__(self, sim):
         Controller.__init__(self, sim)
-        self.config = self.Config(bc_learning_rates = [0.0005, 0.0005],
-                                bc_steps_per_frame = 100, td_max = 0.5)
+        self.config = self.Config(bc_learning_rates = [0.001, 0.001],
+                                bc_steps_per_frame = 10, td_max = 0.5)
         self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
 
     def begin_new_episode(self, case_number):
@@ -203,7 +215,6 @@ class TeleopController(Controller):
                 break
 
         if learnt_controller_exists:
-            print(self.exp.replay_buffer)
             learnt_controller.policy.bc_update(self.exp, self.config, episode_length)
 
 
@@ -217,7 +228,7 @@ class KeypadController(TeleopController):
     def store_key_vel(self, data):
         self.key_vel = data
 
-    def get_delta(self, step):
+    def get_delta(self, step, state):
         dx = self.time_step*self.key_vel.linear.x
         dy = self.time_step*self.key_vel.angular.z
         return {'x':dx, 'y':dy}
@@ -243,14 +254,6 @@ class LearntController(Controller):
     def begin_new_episode(self, case_number):
         confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
         self.exp.new_episode(confidence, sigma, case_number)
-
-    def get_next_pose(self, step, pose):
-        state = self.get_state()
-        delta = self.get_delta(step, state)
-
-        pose['x'] += delta['x']
-        pose['y'] += delta['y']
-        return pose, True
 
     def get_delta(self, step, state):
         action = self.policy.get_action(state)
