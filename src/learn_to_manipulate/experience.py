@@ -65,3 +65,28 @@ class Experience(object):
             episode_return = 0.0
         self.episode_df['return'] = episode_return
         self.episode_df.at[(len(self.episode_df) - 1), 'reward'] = episode_return
+
+    def get_state_value(self, state):
+        alpha = copy.copy(self.prior_alpha)
+        beta = copy.copy(self.prior_beta)
+        length_scale = self.length_scale
+
+        for index, row in self.replay_buffer.iterrows():
+            old_state = np.array(row['state'])
+            state_delta = old_state - state
+
+            # calculate the difference between the two states
+            weight = np.exp(-1.0*(np.linalg.norm(state_delta/length_scale))**2)
+            if weight < 1e-7:
+                weight = 1e-7
+
+            # increment alpha for success and beta for failure
+            if int(round(row["return"])) == 1:
+                alpha = alpha + weight
+            else:
+                beta = beta + weight
+
+        value = alpha/(alpha + beta)
+        variance = alpha*beta/((alpha+beta)**2*(alpha+beta+1.0))
+        sigma = np.sqrt(variance)
+        return value, sigma, alpha, beta

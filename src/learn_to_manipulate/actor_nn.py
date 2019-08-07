@@ -58,59 +58,6 @@ class ActorNN():
         loss = -1.0*advantage*(torch.log(action1_likelihood))
         return loss
 
-    def ac_onestep_update(self, replay_buffer_rl, experience_df, learning_rates, td_max, length_scale):
-        dx_taken = torch.tensor([[experience_df['delta_x']]])
-        dy_taken = torch.tensor([[experience_df['delta_y']]])
-        current_state = np.array(experience_df["laser_state"])
-        next_state = np.array(experience_df["next_laser_state"])
-
-        current_value, sigma, alpha, beta = get_learner_state_value(current_state, replay_buffer_rl, length_scale, self.prior)
-        next_value, sigma, alpha, beta = get_learner_state_value(next_state, replay_buffer_rl, length_scale, self.prior)
-
-        # if the reward is not -1 use the reward else use the td error
-        if int(round(experience_df['reward'])) != -1:
-            onestep_td_error = experience_df['reward'] - current_value
-        else:
-            onestep_td_error = next_value - current_value
-
-        # enforce limit on maximum error
-        if onestep_td_error > td_max:
-            onestep_td_error = td_max
-        elif onestep_td_error < -1.0*td_max:
-            onestep_td_error = -1.0*td_max
-
-        state_input = torch.tensor(np.array(experience_df["laser_state"]), dtype=torch.float64)
-        state_input = state_input.view(1,len(current_state))
-        nn_dx_output = self.forward_pass(state_input, self.weights_dx)
-        nn_dy_output = self.forward_pass(state_input, self.weights_dy)
-
-        print("\nvalue before: %.3f, value after: %.3f" % (current_value, next_value))
-        mean_forward = nn_dx_output[0][0] + self.nominal_means[0]
-        mean_left = nn_dy_output[0][0] + self.nominal_means[1]
-        print("mean forward before: %.5f, mean left before: %.5f" % (mean_forward, mean_left, mean_yaw))
-        print("forward taken: %.3f, left taken: %.3f" % (experience_df['delta_x'], experience_df['delta_y']))
-
-        steps = 5
-        for i in range(steps):
-            nn_dx_output = self.forward_pass(state_input, self.weights_dx)
-            nn_dy_output= self.forward_pass(state_input, self.weights_dy)
-            nn_dyaw_output= self.forward_pass(state_input, self.weights_dyaw)
-            loss_dx = self.get_loss(dx_taken, nn_dx_output, onestep_td_error, self.nominal_means[0], self.nominal_sigma_exps[0])
-            loss_dy = self.get_loss(dy_taken, nn_dy_output, onestep_td_error, self.nominal_means[1], self.nominal_sigma_exps[1])
-            loss_dx.backward()
-            loss_dy.backward()
-
-            with torch.no_grad():
-                self.weights_update(self.weights_dx, learning_rates[0])
-                self.weights_update(self.weights_dy, learning_rates[1])
-
-        nn_dx_output = self.forward_pass(state_input, self.weights_dx)
-        nn_dy_output = self.forward_pass(state_input, self.weights_dy)
-
-        mean_forward = nn_dx_output[0][0] + self.nominal_means[0]
-        mean_left = nn_dy_output[0][0] + self.nominal_means[1]
-        print("mean forwardafter: %.5f, mean left after: %.5f" % (mean_forward, mean_left))
-
     def weights_update(self, weights, learning_rate):
         weights.w1.grad[torch.isnan(weights.w1.grad)] = 0.0
         weights.w2.grad[torch.isnan(weights.w2.grad)] = 0.0
@@ -128,32 +75,37 @@ class ActorNN():
         weights.w2.grad.zero_()
         weights.w3.grad.zero_()
 
-    def ac_update(self, replay_buffer_rl, learning_rates, update_steps, td_max, length_scale):
+    def ac_update(self, experience, config):
+        replay_buffer_rl = experience.replay_buffer
+        length_scale = experience.length_scale
+        learning_rates = config.ac_learning_rates
+        update_steps = config.rl_steps_per_frame
+        td_max = config.td_max
 
         # make the appropriate number of updates
         for update in range(0, update_steps):
 
             # randomly sample an experience from the replay buffer with preference for newer experiences
-            random_experience_index = int(round(np.random.exponential(100)))
-            while random_experience_index >= len(replay_buffer_rl):
-                random_experience_index = int(round(np.random.exponential(100)))
+            ind = int(round(np.random.exponential(100)))
+            while ind >= len(replay_buffer_rl) - 1:
+                ind = int(round(np.random.exponential(100)))
 
             # extract experience
-            experience_df = replay_buffer_rl.iloc[random_experience_index]
-            dx_taken = torch.tensor([[experience_df['delta_x']]])
-            dy_taken = torch.tensor([[experience_df['delta_y']]])
-            current_state = np.array(experience_df["laser_state"])
-            next_state = np.array(experience_df["next_laser_state"])
+            step_df = replay_buffer_rl.iloc[ind]
+            next_step_df = replay_buffer_rl.iloc[ind + 1]
+            dx_taken = torch.tensor([[step_df['dx']]])
+            dy_taken = torch.tensor([[step_df['dy']]])
+            current_state = np.array(step_df['state'])
+            next_state = np.array(next_step_df['state'])
 
             # calcualte one step undiscounted td error
-            current_value, sigma, alpha, beta = get_learner_state_value(current_state, replay_buffer_rl, length_scale, self.prior)
-
+            current_value, sigma, alpha, beta = experience.get_state_value(current_state)
 
             # if the reward is not -1 use the reward else use the td error
             if int(round(experience_df['reward'])) != -1:
                 onestep_td_error = experience_df['reward'] - current_value
             else:
-                next_value, sigma, alpha, beta = get_learner_state_value(next_state, replay_buffer_rl, length_scale, self.prior)
+                next_value, sigma, alpha, beta = experience_state_value(next_state)
                 onestep_td_error = next_value - current_value
 
             # enforce limit on maximum error
@@ -162,7 +114,7 @@ class ActorNN():
             elif onestep_td_error < -1.0*td_max:
                 onestep_td_error = -1.0*td_max
 
-            state_input = torch.tensor(np.array(experience_df["laser_state"]), dtype=torch.float64)
+            state_input = torch.tensor(current_state, dtype=torch.float64)
             state_input = state_input.view(1, len(current_state))
             nn_dx_output = self.forward_pass(state_input, self.weights_dx)
             nn_dy_output = self.forward_pass(state_input, self.weights_dy)
@@ -178,27 +130,31 @@ class ActorNN():
                 self.weights_update(self.weights_dy, learning_rates[1])
 
 
-    def bc_update(self, replay_buffer_demos, learning_rates, update_steps):
+    def bc_update(self, demo_experience, config):
+        replay_buffer_demos = demo_experience.replay_buffer
+        learning_rates = config.bc_learning_rates
+        update_steps = config.bc_steps_per_frame
 
         # make the appropriate number of updates
         for update in range(0, update_steps):
 
             # randomly sample an experience from the replay buffer with preference for newer experiences
-            random_experience_index = int(round(np.random.exponential(200)))
-            while random_experience_index >= len(replay_buffer_demos):
-                random_experience_index = int(round(np.random.exponential(200)))
+            ind = int(round(np.random.exponential(200)))
+            while ind >= len(replay_buffer_demos) - 1:
+                ind = int(round(np.random.exponential(200)))
 
             # extract experience
-            experience_df = replay_buffer_demos.iloc[random_experience_index]
-            dx_taken = torch.tensor([[experience_df['delta_x']]])
-            dy_taken = torch.tensor([[experience_df['delta_y']]])
-            current_state = np.array(experience_df["laser_state"])
-            next_state = np.array(experience_df["next_laser_state"])
+            step_df = replay_buffer_demos.iloc[ind]
+            next_step_df = replay_buffer_demos.iloc[ind + 1]
+            dx_taken = torch.tensor([[step_df['dx']]])
+            dy_taken = torch.tensor([[step_df['dy']]])
+            current_state = np.array(step_df['state'])
+            next_state = np.array(next_step_df['state'])
 
             # calcualte one step undiscounted td error
             advantage = 1.0
 
-            state_input = torch.tensor(np.array(experience_df["laser_state"]), dtype=torch.float64)
+            state_input = torch.tensor(current_state, dtype=torch.float64)
             state_input = state_input.view(1, len(current_state))
             nn_dx_output = self.forward_pass(state_input, self.weights_dx)
             nn_dy_output = self.forward_pass(state_input, self.weights_dy)

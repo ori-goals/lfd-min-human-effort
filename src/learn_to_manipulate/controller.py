@@ -14,14 +14,8 @@ from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
 from learn_to_manipulate.actor_nn import ActorNN
 from learn_to_manipulate.experience import Experience
+from learn_to_manipulate.utils import qv_rotate
 
-
-def qv_rotate(q1, v1):
-    q2 = list(v1)
-    q2.append(0.0)
-    return tf.transformations.quaternion_multiply(
-        tf.transformations.quaternion_multiply(q1, q2),
-        tf.transformations.quaternion_conjugate(q1))[0:3]
 
 class Controller(object):
     def __init__(self, sim):
@@ -78,8 +72,9 @@ class Controller(object):
         pose['y'] += delta['y']
         return pose, True
 
-    def end_episode(self):
-        pass
+    def end_episode(self, result):
+        self.exp.end_episode(result)
+        self.update_learnt_controller(result)
 
     def check_episode_status(self, step):
 
@@ -151,31 +146,6 @@ class Controller(object):
         self.whole_body.move_end_effector_pose([geometry.pose(x=pose['x'],y=pose['y'],z=pose['z'],
                                                 ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
 
-    def get_state_value(self, state, experience):
-        alpha = copy.copy(experience.prior_alpha)
-        beta = copy.copy(experience.prior_beta)
-        length_scale = experience.length_scale
-
-        for index, row in experience.replay_buffer.iterrows():
-            old_state = np.array(row['state'])
-            state_delta = old_state - state
-
-            # calculate the difference between the two states
-            weight = np.exp(-1.0*(np.linalg.norm(state_delta/length_scale))**2)
-            if weight < 1e-7:
-                weight = 1e-7
-
-            # increment alpha for success and beta for failure
-            if int(round(row["return"])) == 1:
-                alpha = alpha + weight
-            else:
-                beta = beta + weight
-
-        value = alpha/(alpha + beta)
-        variance = alpha*beta/((alpha+beta)**2*(alpha+beta+1.0))
-        sigma = np.sqrt(variance)
-        return value, sigma
-
 
 class HandCodedController(Controller):
     def __init__(self, sim):
@@ -194,11 +164,20 @@ class HandCodedController(Controller):
             return False
 
 class KeypadController(Controller):
+    class Config:
+        def __init__(self, bc_learning_rates, bc_steps_per_frame, td_max):
+            self.bc_learning_rates = bc_learning_rates
+            self.bc_steps_per_frame = rl_steps_per_frame
+            self.td_max = td_max
+
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.controller_type = 'key_teleop'
         rospy.Subscriber("key_vel", Twist, self.store_key_vel)
         self.key_vel = Twist()
+        self.config = self.Config(bc_learning_rates = [0.00001, 0.00001],
+                                bc_steps_per_frame = 5, td_max = 0.5)
+        self.exp = Experience(window_size = 1e6, prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
 
     def store_key_vel(self, data):
         self.key_vel = data
@@ -208,8 +187,32 @@ class KeypadController(Controller):
         dy = self.time_step*self.key_vel.angular.z
         return {'x':dx, 'y':dy}
 
+    def update_learnt_controller(self, result):
+
+        # we don't do a behaviour cloning update on unsuccessful episodes
+        if not result['success']:
+            return
+
+        learn_controller_exists = False
+        for controller in sim.controllers:
+            if controller.type = 'learnt':
+                learnt_controller = controller
+                learnt_controller_exists =  True
+                break
+
+        if learnt_controller_exists:
+            learnt_controller.policy.bc_update(self.exp, self.config)
+
+
 
 class LearntController(Controller):
+    class Config:
+        def __init__(self, rl_buffer_frames_min, ac_learning_rates, rl_steps_per_frame, td_max):
+            self.rl_buffer_frames_min = rl_buffer_frames_min
+            self.ac_learning_rates = ac_learning_rates
+            self.rl_steps_per_frame = rl_steps_per_frame
+            self.td_max = td_max
+
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.controller_type = 'learnt'
@@ -217,14 +220,12 @@ class LearntController(Controller):
         nominal_sigma_exps = np.array([-5.5, -5.5])
         self.policy = ActorNN(nominal_means, nominal_sigma_exps)
         self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 1.0)
+        self.config = self.Config(rl_buffer_frames_min = 200, ac_learning_rates = [0.00001, 0.00001],
+                                rl_steps_per_frame = 5, td_max = 0.5)
 
     def begin_new_episode(self, case_number):
-        confidence, sigma = self.get_state_value(self.get_state(), self.exp)
+        confidence, _, _, _ = self.exp.get_state_value(self.get_state())
         self.exp.new_episode(confidence, sigma, case_number)
-
-    def end_episode(self, result):
-        self.exp.end_episode(result)
-        self.update_controller()
 
     def get_next_pose(self, step, pose):
         state = self.get_state()
@@ -239,5 +240,6 @@ class LearntController(Controller):
         action = self.policy.get_action(state)
         return {'x':action[0], 'y':action[1]}
 
-    def update_controller(self):
-        pass
+    def update_learnt_controller(self, result):
+        if len(self.exp.replay_buffer) > self.rl_buffer_frames_min:
+            self.policy.ac_update(self.exp, self.config)
