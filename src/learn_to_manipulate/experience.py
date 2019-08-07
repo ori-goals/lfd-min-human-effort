@@ -49,7 +49,8 @@ class Experience(object):
 
         # insert new episode into the window
         self.replay_buffer_episodes.insert(0, episode)
-        self.replay_buffer_episodes = self.replay_buffer_episodes[0:self.window_size]
+        if self.window_size != float('inf'):
+            self.replay_buffer_episodes = self.replay_buffer_episodes[0:self.window_size]
 
         # construct the replay buffer for learner from the window of experience
         self.replay_buffer = pd.DataFrame(columns = self.col_names)

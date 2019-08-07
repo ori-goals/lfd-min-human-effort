@@ -18,21 +18,34 @@ class Simulation(object):
         self.goal_width_x = 0.2
         self.goal_centre_x = 0.9
 
-    def run_new_episode(self, case_number):
+    def run_new_episode(self, case_number, controller_type = None):
         self.reset_hsrb()
         self.spawn_table()
-        controller = self.choose_controller()
+        controller = self.choose_controller(controller_type)
         controller.set_arm_initial()
         self.spawn_block()
-        print("Starting new episode with controller type: %s" % (controller.controller_type))
+        print("Starting new episode with controller type: %s" % (controller.type))
         result = controller.run_episode(case_number)
         if result['success']:
             print('Episode succeeded.')
         else:
             print('Episode failed by %s\n' % (result['failure_mode']))
 
-    def choose_controller(self):
-        return self.controllers[0]
+    def choose_controller(self, requested_type):
+        if requested_type is not None:
+            controller_type = requested_type
+
+        controller_exists = False
+        for controller in self.controllers:
+            if controller.type == controller_type:
+                chosen_controller = controller
+                controller_exists =  True
+                break
+
+        if not controller_exists:
+            print('Error: requested controller does not exist')
+        else:
+            return chosen_controller
 
     def reset_hsrb(self):
         rospy.wait_for_service('/gazebo/get_world_properties')

@@ -75,15 +75,15 @@ class ActorNN():
         weights.w2.grad.zero_()
         weights.w3.grad.zero_()
 
-    def ac_update(self, experience, config):
+    def ac_update(self, experience, config, episode_length):
         replay_buffer_rl = experience.replay_buffer
         length_scale = experience.length_scale
         learning_rates = config.ac_learning_rates
         update_steps = config.rl_steps_per_frame
         td_max = config.td_max
-
+        print(len(replay_buffer_rl))
         # make the appropriate number of updates
-        for update in range(0, update_steps):
+        for update in range(0, update_steps*episode_length):
 
             # randomly sample an experience from the replay buffer with preference for newer experiences
             ind = int(round(np.random.exponential(100)))
@@ -130,16 +130,18 @@ class ActorNN():
                 self.weights_update(self.weights_dy, learning_rates[1])
 
 
-    def bc_update(self, demo_experience, config):
+    def bc_update(self, demo_experience, config, episode_length):
+        print('bc_update')
         replay_buffer_demos = demo_experience.replay_buffer
         learning_rates = config.bc_learning_rates
         update_steps = config.bc_steps_per_frame
 
         # make the appropriate number of updates
-        for update in range(0, update_steps):
-
+        for update in range(0, update_steps*episode_length):
+            print(update)
             # randomly sample an experience from the replay buffer with preference for newer experiences
             ind = int(round(np.random.exponential(200)))
+            print(len(replay_buffer_demos))
             while ind >= len(replay_buffer_demos) - 1:
                 ind = int(round(np.random.exponential(200)))
 

@@ -37,6 +37,8 @@ class Controller(object):
         self.whole_body.move_end_effector_pose([geometry.pose(x=0.4,y=0.1,z=0.9,ei=0.0, ej=0.0, ek=3.14)], ref_frame_id='map')
         self.whole_body.move_end_effector_pose([geometry.pose(x=self.init_pose['x'],y=self.init_pose['y'],z=self.init_pose['z'],
                                                 ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
+        self.whole_body.move_end_effector_pose([geometry.pose(x=self.init_pose['x'],y=self.init_pose['y'],z=self.init_pose['z'],
+                                                ei=self.init_ori['i'], ej=self.init_ori['j'], ek=self.init_ori['k'])], ref_frame_id='map')
         self.pose = {'x':self.init_pose['x'], 'y':self.init_pose['y'], 'z':self.init_pose['z']}
 
     def begin_new_episode(self):
@@ -67,6 +69,8 @@ class Controller(object):
         if abs(delta['x']) < 0.0001 and abs(delta['y']) < 0.0001:
             return previous_pose, False
 
+        state = self.get_state()
+        self.exp.add_step(state, delta)
         pose = previous_pose
         pose['x'] += delta['x']
         pose['y'] += delta['y']
@@ -74,7 +78,8 @@ class Controller(object):
 
     def end_episode(self, result):
         self.exp.end_episode(result)
-        self.update_learnt_controller(result)
+        episode_length = len(self.exp.episode_df)
+        self.update_learnt_controller(result, episode_length)
 
     def check_episode_status(self, step):
 
@@ -150,7 +155,7 @@ class Controller(object):
 class HandCodedController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
-        self.controller_type = 'hand_coded'
+        self.type = 'hand_coded'
 
     def get_delta(self, step):
         dx = [0.04, 0.04, 0.04, 0.03, 0.05, 0.03, 0.05, 0.05, 0.05]
@@ -163,21 +168,47 @@ class HandCodedController(Controller):
         else:
             return False
 
-class KeypadController(Controller):
+class TeleopController(Controller):
     class Config:
         def __init__(self, bc_learning_rates, bc_steps_per_frame, td_max):
             self.bc_learning_rates = bc_learning_rates
-            self.bc_steps_per_frame = rl_steps_per_frame
+            self.bc_steps_per_frame = bc_steps_per_frame
             self.td_max = td_max
 
     def __init__(self, sim):
         Controller.__init__(self, sim)
-        self.controller_type = 'key_teleop'
-        rospy.Subscriber("key_vel", Twist, self.store_key_vel)
-        self.key_vel = Twist()
         self.config = self.Config(bc_learning_rates = [0.00001, 0.00001],
                                 bc_steps_per_frame = 5, td_max = 0.5)
-        self.exp = Experience(window_size = 1e6, prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
+        self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
+
+    def begin_new_episode(self, case_number):
+        confidence = 1.0
+        sigma = 0.0
+        self.exp.new_episode(confidence, sigma, case_number)
+
+    def update_learnt_controller(self, result, episode_length):
+
+        # we don't do a behaviour cloning update on unsuccessful episodes
+        if not result['success']:
+            return
+
+        learn_controller_exists = False
+        for controller in self.sim.controllers:
+            if controller.type == 'learnt':
+                learnt_controller = controller
+                learnt_controller_exists =  True
+                break
+
+        if learnt_controller_exists:
+            learnt_controller.policy.bc_update(self.exp, self.config, episode_length)
+
+
+class KeypadController(TeleopController):
+    def __init__(self, sim):
+        TeleopController.__init__(self, sim)
+        self.type = 'key_teleop'
+        rospy.Subscriber("key_vel", Twist, self.store_key_vel)
+        self.key_vel = Twist()
 
     def store_key_vel(self, data):
         self.key_vel = data
@@ -186,24 +217,6 @@ class KeypadController(Controller):
         dx = self.time_step*self.key_vel.linear.x
         dy = self.time_step*self.key_vel.angular.z
         return {'x':dx, 'y':dy}
-
-    def update_learnt_controller(self, result):
-
-        # we don't do a behaviour cloning update on unsuccessful episodes
-        if not result['success']:
-            return
-
-        learn_controller_exists = False
-        for controller in sim.controllers:
-            if controller.type = 'learnt':
-                learnt_controller = controller
-                learnt_controller_exists =  True
-                break
-
-        if learnt_controller_exists:
-            learnt_controller.policy.bc_update(self.exp, self.config)
-
-
 
 class LearntController(Controller):
     class Config:
@@ -215,7 +228,7 @@ class LearntController(Controller):
 
     def __init__(self, sim):
         Controller.__init__(self, sim)
-        self.controller_type = 'learnt'
+        self.type = 'learnt'
         nominal_means = np.array([0.02, 0.0])
         nominal_sigma_exps = np.array([-5.5, -5.5])
         self.policy = ActorNN(nominal_means, nominal_sigma_exps)
@@ -224,13 +237,12 @@ class LearntController(Controller):
                                 rl_steps_per_frame = 5, td_max = 0.5)
 
     def begin_new_episode(self, case_number):
-        confidence, _, _, _ = self.exp.get_state_value(self.get_state())
+        confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
         self.exp.new_episode(confidence, sigma, case_number)
 
     def get_next_pose(self, step, pose):
         state = self.get_state()
         delta = self.get_delta(step, state)
-        self.exp.add_step(state, delta)
 
         pose['x'] += delta['x']
         pose['y'] += delta['y']
@@ -240,6 +252,6 @@ class LearntController(Controller):
         action = self.policy.get_action(state)
         return {'x':action[0], 'y':action[1]}
 
-    def update_learnt_controller(self, result):
-        if len(self.exp.replay_buffer) > self.rl_buffer_frames_min:
-            self.policy.ac_update(self.exp, self.config)
+    def update_learnt_controller(self, result, episode_length):
+        if len(self.exp.replay_buffer) > self.config.rl_buffer_frames_min:
+            self.policy.ac_update(self.exp, self.config, episode_length)
