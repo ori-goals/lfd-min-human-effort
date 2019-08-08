@@ -25,6 +25,15 @@ class Simulation(object):
         self.goal_centre_x = 0.78
         self.all_runs = []
 
+    def run_new_episode(self, case_name, case_number, controller_type = None):
+        self.reset_hsrb()
+        self.spawn_table()
+        controller = self.choose_controller(controller_type)
+        controller.set_arm_initial()
+        self.spawn_block(case_name, case_number)
+        result, episode = controller.run_episode(case_number)
+        self.all_runs.append(episode)
+
     @classmethod
     def load_simulation(cls, file_path):
         sim =  cls()
@@ -76,15 +85,6 @@ class Simulation(object):
         with open(new_file_path, 'w') as f:
             pickle.dump([self.all_runs, controller_save_info], f)
             f.close
-
-    def run_new_episode(self, case_number, controller_type = None):
-        self.reset_hsrb()
-        self.spawn_table()
-        controller = self.choose_controller(controller_type)
-        controller.set_arm_initial()
-        self.spawn_block()
-        result, episode = controller.run_episode(case_number)
-        self.all_runs.append(episode)
 
     def add_controllers(self, type_dict):
         controller_list = []
@@ -173,21 +173,33 @@ class Simulation(object):
             spawn_model_prox("table", table_sdf, "simulation", table_initial_pose, "world")
             spawn_model_prox("goal", goal_sdf, "simulation", self.goal_pose, "world")
 
-    def spawn_block(self):
-        block_name = 'block_30'
-        self.block_length = float("0." + block_name.split('_')[1])
+    def spawn_block(self, case_name, case_number):
+
+        # find the correct case from the file
         my_path = os.path.abspath(os.path.dirname(__file__))
-        path = os.path.join(my_path, "../../models/" + block_name + "/model.sdf")
-        f = open(path,'r')
+        load_path = os.path.join(my_path, '../../config/cases/' + case_name + '.csv')
+        file = open(load_path, "r")
+        reader = csv.reader(file, delimiter=',')
+        for row in reader:
+            if int(row[0]) == case_number:
+                x = float(row[1])
+                y = float(row[2])
+                angle_deg = float(row[3])
+                block_name = row[4]
+                break
+
+        self.block_length = float("0." + block_name.split('_')[1])
+        model_path = os.path.join(my_path, "../../models/" + block_name + "/model.sdf")
+        f = open(model_path,'r')
         sdf = f.read()
 
         initial_pose = Pose()
-        initial_pose.position.x = 0.55
-        initial_pose.position.y = 0.08
+        initial_pose.position.x = x
+        initial_pose.position.y = y
         initial_pose.position.z = 0.5
 
-        initial_pose.orientation.z = 0.4226
-        initial_pose.orientation.w = 0.9063
+        initial_pose.orientation.z = np.sin(np.radians(angle_deg)/2)
+        initial_pose.orientation.w = np.cos(np.radians(angle_deg)/2)
 
         rospy.wait_for_service('gazebo/spawn_sdf_model')
         spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)

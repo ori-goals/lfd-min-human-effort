@@ -8,7 +8,7 @@ if __name__ == "__main__" :
     sim = Simulation()
     sim.add_controllers({'learnt':'', 'key_teleop':''})
 
-    case_number = 10
-
-    sim.run_new_episode(case_number, controller_type = 'learnt')
+    case_name = 'test_cases'
+    sim.run_new_episode(case_name, 10, controller_type = 'learnt')
+    sim.run_new_episode(case_name, 11, controller_type = 'learnt')
     sim.save_simulation('/home/marcrigter')
