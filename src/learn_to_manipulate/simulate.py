@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import rospy
 import hsrb_interface
+import pickle
+import time
 import controller_manager_msgs.srv
 import trajectory_msgs.msg
 import os.path
@@ -8,15 +10,50 @@ from hsrb_interface import geometry
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
+from learn_to_manipulate.controller import *
 
 class Simulation(object):
-    def __init__(self):
+    def __init__(self, file_path = None):
         self.robot = hsrb_interface.Robot()
         self.whole_body = self.robot.get('whole_body')
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
         self.block_width = 0.04
         self.goal_width_x = 0.001
         self.goal_centre_x = 0.78
+        self.all_runs = []
+
+    @classmethod
+    def load_simulation(cls, file_path):
+        sim =  cls()
+
+        file = open(file_path,"rb")
+        all_runs, controller_save_info = pickle.load(file)
+        sim.all_runs = all_runs
+
+        controller_list = []
+        for save_info in controller_save_info:
+            if save_info['type'] == 'learnt':
+                controller_list.append(LearntController.from_save_info(sim, save_info))
+            elif save_info['type'] == 'key_teleop':
+                controller_list.append(KeypadController.from_save_info(sim, save_info))
+            elif save_info['type'] == 'saved_teleop':
+                pass
+        sim.controllers = controller_list
+        return sim
+
+    def save_simulation(self, folder):
+        fname = time.strftime("%Y-%m-%d-%H-%M")
+        for contr in self.controllers:
+            fname += '_' + contr.type + str(contr.episode_count)
+        new_file_path = folder + '/' + fname + '.pkl'
+
+        controller_save_info = []
+        for contr in self.controllers:
+            controller_save_info.append(contr.get_save_info())
+
+        with open(new_file_path, 'w') as f:
+            pickle.dump([self.all_runs, controller_save_info], f)
+            f.close
 
     def run_new_episode(self, case_number, controller_type = None):
         self.reset_hsrb()
@@ -24,7 +61,19 @@ class Simulation(object):
         controller = self.choose_controller(controller_type)
         controller.set_arm_initial()
         self.spawn_block()
-        result = controller.run_episode(case_number)
+        result, episode = controller.run_episode(case_number)
+        self.all_runs.append(episode)
+
+    def add_controllers(self, type_dict):
+        controller_list = []
+        for type in type_dict:
+            if type == 'learnt':
+                controller_list.append(LearntController(self))
+            elif type == 'key_teleop':
+                controller_list.append(KeypadController(self))
+            elif type == 'saved_teleop':
+                pass
+        self.controllers = controller_list
 
 
     def choose_controller(self, requested_type):

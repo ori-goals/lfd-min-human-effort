@@ -28,8 +28,19 @@ class Controller(object):
         self.time_step = 0.1
         self.sim = sim
         self.max_pose_x = 0.78
+        self.episode_count = 0
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
 
+    @classmethod
+    def from_save_info(cls, sim, save_info):
+        controller = cls(sim)
+        controller.config = save_info['config']
+        controller.exp = save_info['exp']
+        return controller
+
+
+    def get_save_info(self):
+        return {'type':self.type, 'exp':self.exp, 'config':self.config}
 
     def set_arm_initial(self):
         self.whole_body.move_to_neutral()
@@ -69,8 +80,8 @@ class Controller(object):
             print('Episode succeeded.')
         else:
             print('Episode failed by %s\n' % (result['failure_mode']))
-        self.end_episode(result)
-        return result
+        episode = self.end_episode(result)
+        return result, episode
 
     def get_next_pose(self, step, previous_pose):
         # if there is no movement return false
@@ -86,6 +97,7 @@ class Controller(object):
         return pose, True
 
     def end_episode(self, result):
+        self.episode_count += 1
         self.exp.end_episode(result)
         episode_length = len(self.exp.episode_df)
         self.update_learnt_controller(result, episode_length)
@@ -184,15 +196,9 @@ class HandCodedController(Controller):
             return False
 
 class TeleopController(Controller):
-    class Config:
-        def __init__(self, bc_learning_rates, bc_steps_per_frame, td_max):
-            self.bc_learning_rates = bc_learning_rates
-            self.bc_steps_per_frame = bc_steps_per_frame
-            self.td_max = td_max
-
     def __init__(self, sim):
         Controller.__init__(self, sim)
-        self.config = self.Config(bc_learning_rates = [0.001, 0.001],
+        self.config = DemoConfig(bc_learning_rates = [0.001, 0.001],
                                 bc_steps_per_frame = 10, td_max = 0.5)
         self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
 
@@ -234,12 +240,6 @@ class KeypadController(TeleopController):
         return {'x':dx, 'y':dy}
 
 class LearntController(Controller):
-    class Config:
-        def __init__(self, rl_buffer_frames_min, ac_learning_rates, rl_steps_per_frame, td_max):
-            self.rl_buffer_frames_min = rl_buffer_frames_min
-            self.ac_learning_rates = ac_learning_rates
-            self.rl_steps_per_frame = rl_steps_per_frame
-            self.td_max = td_max
 
     def __init__(self, sim):
         Controller.__init__(self, sim)
@@ -248,7 +248,7 @@ class LearntController(Controller):
         nominal_sigma_exps = np.array([-5.0, -5.0])
         self.policy = ActorNN(nominal_means, nominal_sigma_exps)
         self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 1.0)
-        self.config = self.Config(rl_buffer_frames_min = 200, ac_learning_rates = [0.00001, 0.00001],
+        self.config = LearntConfig(rl_buffer_frames_min = 200, ac_learning_rates = [0.00001, 0.00001],
                                 rl_steps_per_frame = 5, td_max = 0.5)
 
     def begin_new_episode(self, case_number):
@@ -262,3 +262,27 @@ class LearntController(Controller):
     def update_learnt_controller(self, result, episode_length):
         if len(self.exp.replay_buffer) > self.config.rl_buffer_frames_min:
             self.policy.ac_update(self.exp, self.config, episode_length)
+
+    def get_save_info(self):
+        return {'type':self.type, 'exp':self.exp, 'config':self.config, 'policy':self.policy}
+
+    @classmethod
+    def from_save_info(cls, sim, save_info):
+        controller = cls(sim)
+        controller.config = save_info['config']
+        controller.exp = save_info['exp']
+        controller.policy = save_info['policy']
+        return controller
+
+class LearntConfig(object):
+    def __init__(self, rl_buffer_frames_min, ac_learning_rates, rl_steps_per_frame, td_max):
+        self.rl_buffer_frames_min = rl_buffer_frames_min
+        self.ac_learning_rates = ac_learning_rates
+        self.rl_steps_per_frame = rl_steps_per_frame
+        self.td_max = td_max
+
+class DemoConfig:
+    def __init__(self, bc_learning_rates, bc_steps_per_frame, td_max):
+        self.bc_learning_rates = bc_learning_rates
+        self.bc_steps_per_frame = bc_steps_per_frame
+        self.td_max = td_max

@@ -44,6 +44,7 @@ class Experience(object):
             case_number = self.episode_case_number)
         self.episode_list.append(episode)
         self.add_to_replay_buffer(episode)
+        return episode
 
     def add_to_replay_buffer(self, episode):
 

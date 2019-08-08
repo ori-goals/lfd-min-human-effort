@@ -5,10 +5,6 @@ import rospy
 
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate')
-    sim = Simulation()
-    sim.add_controllers({'learnt':'', 'key_teleop':''})
-
+    sim = Simulation.load_simulation('/home/marcrigter/2019-08-08-11-49_learnt1_key_teleop0.pkl')
     case_number = 10
-
     sim.run_new_episode(case_number, controller_type = 'learnt')
-    sim.save_simulation('/home/marcrigter')
