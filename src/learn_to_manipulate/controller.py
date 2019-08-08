@@ -200,7 +200,7 @@ class HandCodedController(Controller):
 class TeleopController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
-        self.config = DemoConfig(bc_learning_rates = [0.001, 0.001],
+        self.config = DemoConfig(bc_learning_rates = [0.0001, 0.0001],
                                 bc_steps_per_frame = 10, td_max = 0.5)
         self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
 
@@ -215,7 +215,7 @@ class TeleopController(Controller):
         if not result:
             return
 
-        learn_controller_exists = False
+        learnt_controller_exists = False
         for controller in self.sim.controllers:
             if controller.type == 'learnt':
                 learnt_controller = controller
