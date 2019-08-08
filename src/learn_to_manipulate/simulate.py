@@ -3,9 +3,12 @@ import rospy
 import hsrb_interface
 import pickle
 import time
+import random
+import csv
 import controller_manager_msgs.srv
 import trajectory_msgs.msg
 import os.path
+import numpy as np
 from hsrb_interface import geometry
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped
 from gazebo_msgs.msg import *
@@ -40,6 +43,25 @@ class Simulation(object):
                 pass
         sim.controllers = controller_list
         return sim
+
+    @classmethod
+    def generate_cases(cls, case_name, number, spec = None):
+        if spec is None:
+            spec = {'min_y':-0.1, 'max_y':0.1, 'min_x':0.5, 'max_x':0.65,
+                'min_angle_deg':-60, 'max_angle_deg':60,
+                'block_names':['block_30']}
+
+        my_path = os.path.abspath(os.path.dirname(__file__))
+        save_path = os.path.join(my_path, '../../config/cases/' + case_name + '.csv')
+        with open(save_path, mode='w') as file:
+            writer = csv.writer(file, delimiter=',')
+            for case in range(number):
+                x = np.random.uniform(spec['min_x'], spec['max_x'])
+                y = np.random.uniform(spec['min_y'], spec['max_y'])
+                angle_deg = np.random.uniform(spec['min_angle_deg'], spec['max_angle_deg'])
+                block_name = random.choice(spec['block_names'])
+                writer.writerow([case, x, y, angle_deg, block_name])
+
 
     def save_simulation(self, folder):
         fname = time.strftime("%Y-%m-%d-%H-%M")
