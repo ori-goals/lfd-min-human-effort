@@ -9,13 +9,14 @@ from std_msgs.msg import Bool, Float64, Int16, String
 
 
 class Episode():
-    def __init__(self, df, confidence, sigma, result, failure_mode, case_number):
+    def __init__(self, df, confidence, sigma, result, failure_mode, case_number, case_name):
         self.episode_df = df
         self.confidence = confidence
         self.sigma = sigma
         self.result = result
         self.failure_mode = failure_mode
         self.case_number = case_number
+        self.case_name = case_name
 
 class Experience(object):
     def __init__(self, window_size, prior_alpha, prior_beta, length_scale):
@@ -28,11 +29,12 @@ class Experience(object):
         self.episode_list = []
         self.replay_buffer_episodes = []
 
-    def new_episode(self, episode_confidence, sigma, case_number):
+    def new_episode(self, episode_confidence, sigma, case_name, case_number):
         self.episode_df = pd.DataFrame(columns = self.col_names)
         self.episode_confidence = episode_confidence
         self.episode_confidence_sigma = sigma
         self.episode_case_number = case_number
+        self.episode_case_name = case_name
 
     def add_step(self, state, action):
         self.episode_df.loc[len(self.episode_df)] = [state, action['x'], action['y'], -1.0, -1.0]
@@ -41,10 +43,14 @@ class Experience(object):
         self.store_episode_result(result['success'])
         episode = Episode(df = self.episode_df, confidence = self.episode_confidence,
             sigma = self.episode_confidence_sigma, result = result['success'], failure_mode = result['failure_mode'],
-            case_number = self.episode_case_number)
+            case_number = self.episode_case_number, case_name = self.episode_case_name)
         self.episode_list.append(episode)
         self.add_to_replay_buffer(episode)
         return episode
+
+    def add_saved_episode(self, episode):
+        self.episode_list.append(episode)
+        self.add_to_replay_buffer(episode)
 
     def add_to_replay_buffer(self, episode):
 

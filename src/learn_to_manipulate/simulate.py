@@ -29,9 +29,10 @@ class Simulation(object):
         self.reset_hsrb()
         self.spawn_table()
         controller = self.choose_controller(controller_type)
-        controller.set_arm_initial()
-        self.spawn_block(case_name, case_number)
-        result, episode = controller.run_episode(case_number)
+        if not isinstance(controller, SavedTeleopController):
+            controller.set_arm_initial()
+            self.spawn_block(case_name, case_number)
+        episode = controller.run_episode(case_name, case_number)
         self.all_runs.append(episode)
 
     @classmethod
@@ -46,7 +47,7 @@ class Simulation(object):
         for save_info in controller_save_info:
             if save_info['type'] == 'learnt':
                 controller_list.append(LearntController.from_save_info(sim, save_info))
-            elif save_info['type'] == 'key_teleop':
+            elif save_info['type'] == 'keypad_teleop':
                 controller_list.append(KeypadController.from_save_info(sim, save_info))
             elif save_info['type'] == 'saved_teleop':
                 pass
@@ -91,10 +92,11 @@ class Simulation(object):
         for type in type_dict:
             if type == 'learnt':
                 controller_list.append(LearntController(self))
-            elif type == 'key_teleop':
+            elif type == 'keypad_teleop':
                 controller_list.append(KeypadController(self))
             elif type == 'saved_teleop':
-                pass
+                mydict = type_dict[type]
+                controller_list.append(SavedTeleopController(self, mydict['file'], mydict['type']))
         self.controllers = controller_list
 
 

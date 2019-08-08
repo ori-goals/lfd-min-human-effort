@@ -2,6 +2,7 @@
 import hsrb_interface
 import rospy
 import tf
+import pickle
 import copy
 import controller_manager_msgs.srv
 import trajectory_msgs.msg
@@ -59,9 +60,9 @@ class Controller(object):
     def begin_new_episode(self):
         pass
 
-    def run_episode(self, case_number):
+    def run_episode(self, case_name, case_number):
         print("Starting new episode with controller type: %s" % (self.type))
-        self.begin_new_episode(case_number)
+        self.begin_new_episode(case_name, case_number)
         episode_running = True
         step = 0
         while episode_running:
@@ -81,7 +82,7 @@ class Controller(object):
         else:
             print('Episode failed by %s\n' % (result['failure_mode']))
         episode = self.end_episode(result)
-        return result, episode
+        return episode
 
     def get_next_pose(self, step, previous_pose):
         # if there is no movement return false
@@ -98,9 +99,10 @@ class Controller(object):
 
     def end_episode(self, result):
         self.episode_count += 1
-        self.exp.end_episode(result)
+        episode = self.exp.end_episode(result)
         episode_length = len(self.exp.episode_df)
-        self.update_learnt_controller(result, episode_length)
+        self.update_learnt_controller(episode.result, episode_length)
+        return episode
 
     def check_episode_status(self, step, pose):
 
@@ -202,15 +204,15 @@ class TeleopController(Controller):
                                 bc_steps_per_frame = 10, td_max = 0.5)
         self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
 
-    def begin_new_episode(self, case_number):
+    def begin_new_episode(self, case_name, case_number):
         confidence = 1.0
         sigma = 0.0
-        self.exp.new_episode(confidence, sigma, case_number)
+        self.exp.new_episode(confidence, sigma, case_name, case_number)
 
     def update_learnt_controller(self, result, episode_length):
 
         # we don't do a behaviour cloning update on unsuccessful episodes
-        if not result['success']:
+        if not result:
             return
 
         learn_controller_exists = False
@@ -223,11 +225,55 @@ class TeleopController(Controller):
         if learnt_controller_exists:
             learnt_controller.policy.bc_update(self.exp, self.config, episode_length)
 
+class SavedTeleopController(TeleopController):
+    def __init__(self, sim, file, type):
+        TeleopController.__init__(self, sim)
+        self.type = type
+        self.load_saved_experience(file, type)
+
+    def load_saved_experience(self, file, type):
+        file = open(file,"rb")
+        all_runs, controller_save_info = pickle.load(file)
+        controller_found = False
+        for save_info in controller_save_info:
+            if save_info['type'] == type:
+                experience = save_info['exp']
+                controller_found = True
+
+        if not controller_found:
+            sys.exit('Controller type %s not found in file %s.' % (type, file))
+        self.previous_experience = experience
+
+    def run_episode(self, case_name, case_number):
+        print("Starting new episode with saved controller type: %s" % (self.type))
+
+        # find the appropriate episode in saved experience
+        episode_found = False
+        for episode in self.previous_experience.episode_list:
+            if episode.case_name == case_name and episode.case_number == case_number:
+                episode_found = True
+                break
+
+        if not episode_found:
+            sys.exit('Saved episode number %s and name %s not found.' % (str(case_number), case_name))
+
+        if episode.result:
+            print('Episode succeeded.')
+        else:
+            print('Episode failed by %s\n' % (episode.failure_mode))
+        self.end_episode(episode)
+        return episode
+
+    def end_episode(self, episode):
+        self.episode_count += 1
+        self.exp.add_saved_episode(episode)
+        episode_length = len(episode.episode_df)
+        self.update_learnt_controller(episode.result, episode_length)
 
 class KeypadController(TeleopController):
     def __init__(self, sim):
         TeleopController.__init__(self, sim)
-        self.type = 'key_teleop'
+        self.type = 'keypad_teleop'
         rospy.Subscriber("key_vel", Twist, self.store_key_vel)
         self.key_vel = Twist()
 
@@ -251,9 +297,9 @@ class LearntController(Controller):
         self.config = LearntConfig(rl_buffer_frames_min = 200, ac_learning_rates = [0.00001, 0.00001],
                                 rl_steps_per_frame = 5, td_max = 0.5)
 
-    def begin_new_episode(self, case_number):
+    def begin_new_episode(self, case_name, case_number):
         confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
-        self.exp.new_episode(confidence, sigma, case_number)
+        self.exp.new_episode(confidence, sigma, case_name, case_number)
 
     def get_delta(self, step, state):
         action = self.policy.get_action(state)
