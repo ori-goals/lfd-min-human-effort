@@ -9,7 +9,6 @@ import controller_manager_msgs.srv
 import trajectory_msgs.msg
 import os.path
 import numpy as np
-from hsrb_interface import geometry
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
@@ -17,8 +16,6 @@ from learn_to_manipulate.controller import *
 
 class Simulation(object):
     def __init__(self, file_path = None):
-        self.robot = hsrb_interface.Robot()
-        self.whole_body = self.robot.get('whole_body')
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
         self.block_width = 0.04
         self.goal_width_x = 0.001
@@ -30,11 +27,10 @@ class Simulation(object):
         self.alpha = 0.5
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
-        self.reset_hsrb()
+        self.controllers[0].set_arm_initial()
         self.spawn_table()
         self.spawn_block(case_name, case_number)
         controller = self.choose_controller(switching_method, controller_type)
-        controller.set_arm_initial()
         episode = controller.run_episode(case_name, case_number)
         self.all_runs.append(episode)
 
@@ -125,35 +121,6 @@ class Simulation(object):
                     (controller.type, confidence, sigma, ucb))
             return chosen_controller
 
-    def reset_hsrb(self):
-        rospy.wait_for_service('/gazebo/get_world_properties')
-        get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
-        world = get_world_properties_prox()
-
-        if 'block' in world.model_names:
-            rospy.wait_for_service('/gazebo/delete_model')
-            delete_model_prox = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
-            delete_model_prox('block')
-
-        # reset the location of the hsrb
-        self.whole_body.move_to_neutral()
-        rospy.wait_for_service('/gazebo/set_model_state')
-        set_model_state_prox = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
-        state = ModelState(model_name='hsrb', reference_frame='map')
-        set_model_state_prox(state)
-        self.whole_body.move_to_neutral()
-
-        # reset estimated location
-        pose = PoseWithCovarianceStamped()
-        pose.header.stamp = rospy.Time.now()
-        pose.header.frame_id = 'map'
-        pose.pose.covariance = [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0,
-                                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942]
-        pose.pose.pose.orientation.w = 1.0
-        self.initial_pose_pub.publish(pose)
-
     def spawn_table(self):
         rospy.wait_for_service('/gazebo/get_world_properties')
         get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
@@ -166,7 +133,7 @@ class Simulation(object):
             table_sdf = f.read()
 
             table_initial_pose = Pose()
-            table_initial_pose.position.x = 0.62
+            table_initial_pose.position.x = 0.55
             table_initial_pose.position.y = 0.0
             table_initial_pose.position.z = 0.2
 
@@ -185,6 +152,14 @@ class Simulation(object):
             spawn_model_prox("goal", goal_sdf, "simulation", self.goal_pose, "world")
 
     def spawn_block(self, case_name, case_number):
+        rospy.wait_for_service('/gazebo/get_world_properties')
+        get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
+        world = get_world_properties_prox()
+
+        if 'block' in world.model_names:
+            rospy.wait_for_service('/gazebo/delete_model')
+            delete_model_prox = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
+            delete_model_prox('block')
 
         # find the correct case from the file
         my_path = os.path.abspath(os.path.dirname(__file__))

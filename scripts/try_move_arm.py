@@ -170,7 +170,7 @@ class MoveGroupPythonIntefaceTutorial(object):
     qys = [0.0, 0.0, 0.0, 0.0, 0.0, 0.6697, 0.6697]
     qzs = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     qws = [0.0, 0.0, 0.0, 0.0, 0.0, 0.7426, 0.7426]
-    xs = [0.816, 0.70, 0.58, 0.50, 0.264, 0.264, 0.28]
+    xs = [0.816, 0.70, 0.58, 0.50, 0.264, 0.264, 0.25]
     ys = [0.191, 0.20, 0.199, 0.2, 0.2, 0.2, 0.0]
     zs = [0.0, 0.12, 0.253, 0.35, 0.35, 0.34, 0.35]
 
@@ -210,7 +210,7 @@ class MoveGroupPythonIntefaceTutorial(object):
 def main():
   try:
     tutorial = MoveGroupPythonIntefaceTutorial()
-    tutorial.move_to_start()
+    #tutorial.move_to_start()
 
 
     print "============ Python tutorial demo complete!"
