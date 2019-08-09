@@ -205,9 +205,11 @@ class TeleopController(Controller):
         self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
 
     def begin_new_episode(self, case_name, case_number):
-        confidence = 1.0
-        sigma = 0.0
+        confidence, sigma = self.get_controller_confidence()
         self.exp.new_episode(confidence, sigma, case_name, case_number)
+
+    def get_controller_confidence(self):
+        return 1.0, 0.0
 
     def update_learnt_controller(self, result, episode_length):
 
@@ -298,8 +300,12 @@ class LearntController(Controller):
                                 rl_steps_per_frame = 5, td_max = 0.5)
 
     def begin_new_episode(self, case_name, case_number):
-        confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
+        confidence, sigma = self.get_controller_confidence()
         self.exp.new_episode(confidence, sigma, case_name, case_number)
+
+    def get_controller_confidence(self):
+        confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
+        return confidence, sigma
 
     def get_delta(self, step, state):
         action = self.policy.get_action(state)

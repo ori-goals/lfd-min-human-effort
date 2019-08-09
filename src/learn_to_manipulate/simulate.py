@@ -24,14 +24,17 @@ class Simulation(object):
         self.goal_width_x = 0.001
         self.goal_centre_x = 0.78
         self.all_runs = []
+        self.demo_cost = 0.3
+        self.success_reward = 1.0
+        self.failure_reward = 0.0
+        self.alpha = 0.5
 
-    def run_new_episode(self, case_name, case_number, controller_type = None):
+    def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
         self.reset_hsrb()
         self.spawn_table()
-        controller = self.choose_controller(controller_type)
-        if not isinstance(controller, SavedTeleopController):
-            controller.set_arm_initial()
-            self.spawn_block(case_name, case_number)
+        self.spawn_block(case_name, case_number)
+        controller = self.choose_controller(switching_method, controller_type)
+        controller.set_arm_initial()
         episode = controller.run_episode(case_name, case_number)
         self.all_runs.append(episode)
 
@@ -100,20 +103,26 @@ class Simulation(object):
         self.controllers = controller_list
 
 
-    def choose_controller(self, requested_type):
+    def choose_controller(self, switching_method = None, requested_type = None):
+
+        # if a controller type has been specified
         if requested_type is not None:
-            controller_type = requested_type
+            for controller in self.controllers:
+                if controller.type == requested_type:
+                    return controller
+            sys.exit('Error: requested controller does not exist')
 
-        controller_exists = False
-        for controller in self.controllers:
-            if controller.type == controller_type:
-                chosen_controller = controller
-                controller_exists =  True
-                break
-
-        if not controller_exists:
-            print('Error: requested controller does not exist')
-        else:
+        if switching_method == 'contextual_bandit':
+            max_ucb = 0.0
+            for controller in self.controllers:
+                confidence, sigma = controller.get_controller_confidence()
+                ucb = (confidence + self.alpha*sigma)*self.success_reward
+                if 'teleop' in controller.type:
+                    ucb -= self.demo_cost
+                if ucb > max_ucb:
+                    chosen_controller = controller
+                print('Controller type %s has confidence %.4f with sigma %.4f and ucb %.4f' %
+                    (controller.type, confidence, sigma, ucb))
             return chosen_controller
 
     def reset_hsrb(self):
