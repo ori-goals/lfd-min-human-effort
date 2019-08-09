@@ -26,12 +26,12 @@ class Controller(object):
         moveit_commander.roscpp_initialize(sys.argv)
         self.robot = moveit_commander.RobotCommander()
         self.group = moveit_commander.MoveGroupCommander("manipulator")
-        self.steps_max = 50
+        self.steps_max = 2000
         self.time_step = 0.05
         self.sim = sim
         self.max_pose_x = 0.78
         self.episode_count = 0
-        self.pose = {'x':0.30, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
+        self.pose = {'x':0.75, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
 
     @classmethod
@@ -54,7 +54,7 @@ class Controller(object):
         qys = [0.0, 0.0, 0.0, 0.0, 0.0, 0.6697, self.pose['qy']]
         qzs = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, self.pose['qz']]
         qws = [0.0, 0.0, 0.0, 0.0, 0.0, 0.7426, self.pose['qw']]
-        xs = [0.816, 0.70, 0.58, 0.50, 0.30, 0.30, self.pose['x']]
+        xs = [0.816, 0.70, 0.7, 0.7, 0.7, 0.75, self.pose['x']]
         ys = [0.191, 0.20, 0.199, 0.2, 0.2, 0.2, self.pose['y']]
         zs = [0.0, 0.12, 0.253, 0.35, 0.35, 0.35, self.pose['z']]
         for ind in range(len(qxs)):
@@ -196,10 +196,13 @@ class Controller(object):
         pose_goal.position.x = self.pose['x']
         pose_goal.position.y = self.pose['y']
         pose_goal.position.z = self.pose['z']
-        self.group.set_pose_target(pose_goal)
-        plan = self.group.go(wait=True)
-        self.group.stop()
-        self.group.clear_pose_targets()
+        #self.group.set_pose_target(pose_goal)
+        #plan = self.group.go(wait=True)
+        #self.group.stop()
+        #self.group.clear_pose_targets()
+        waypoints = [pose_goal]
+        plan, fraction = self.group.compute_cartesian_path(waypoints,  0.005, 0.0)
+        self.group.execute(plan, wait=True)
 
 
 class HandCodedController(Controller):

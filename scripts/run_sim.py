@@ -10,6 +10,7 @@ if __name__ == "__main__" :
     sim.add_controllers({'learnt':{}, 'keypad_teleop':{}})
 
     case_name = 'similar_cases'
-    sim.run_new_episode(case_name, 0, controller_type = 'keypad_teleop')
+    for i in range(50):
+        sim.run_new_episode(case_name, 0, controller_type = 'keypad_teleop')
     sim.run_new_episode(case_name, 0, controller_type = 'learnt')
     sim.run_new_episode(case_name, 0, switching_method = 'contextual_bandit')
