@@ -32,8 +32,9 @@ class Simulation(object):
         self.spawn_table()
         self.spawn_block(case_name, case_number)
         controller = self.choose_controller(switching_method, controller_type)
-        episode = controller.run_episode(case_name, case_number)
+        episode, dense_reward = controller.run_episode(case_name, case_number)
         self.all_runs.append(episode)
+        return episode, dense_reward
 
     @classmethod
     def load_simulation(cls, file_path):
@@ -93,6 +94,8 @@ class Simulation(object):
                 controller_list.append(LearntController(self))
             elif type == 'keypad_teleop':
                 controller_list.append(KeypadController(self))
+            elif type == 'ddpg':
+                controller_list.append(DDPGController(self))
             elif type == 'saved_teleop':
                 mydict = type_dict[type]
                 controller_list.append(SavedTeleopController(self, mydict['file'], mydict['type']))

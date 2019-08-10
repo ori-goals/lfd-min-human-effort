@@ -17,16 +17,19 @@ from gazebo_msgs.srv import *
 from learn_to_manipulate.actor_nn import ActorNN
 from learn_to_manipulate.experience import Experience
 from learn_to_manipulate.utils import qv_rotate
-
+from learn_to_manipulate.ddpg import DDPGagent
+from utils import *
 
 class Controller(object):
     def __init__(self, sim):
         moveit_commander.roscpp_initialize(sys.argv)
         self.robot = moveit_commander.RobotCommander()
         self.group = moveit_commander.MoveGroupCommander("manipulator")
-        self.steps_max = 60
+        self.steps_max = 80
         self.time_step = 0.05
         self.sim = sim
+        self.num_states = 52
+        self.num_actions = 2
         self.pose_limits = {'min_x':0.25, 'max_x':0.75, 'min_y':-0.25, 'max_y':0.25}
         self.episode_count = 0
         self.init_pose = {'x':0.29, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
@@ -72,28 +75,26 @@ class Controller(object):
                 self.group.stop()
                 self.group.clear_pose_targets()
             else:
-                self.execute_pose(self.init_pose)
+                self.go_to_pose(self.init_pose)
         rospy.sleep(1.0)
 
-    def begin_new_episode(self):
-        pass
-
     def run_episode(self, case_name, case_number):
-        self.current_pose = copy.copy(self.init_pose)
         print("Starting new episode with controller type: %s" % (self.type))
+        self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
         episode_running = True
+        episode_reward = 0.0
         step = 0
         while episode_running:
-            next_pose, moved = self.get_next_pose(step, self.current_pose)
-
-            # if there is no movement sleep and try again
-            if not moved:
+            state = self.get_state()
+            action = self.get_action(state, step)
+            if abs(action['x']) < 0.0001 and abs(action['y']) < 0.0001:
                 rospy.sleep(0.1)
-                continue
-            self.execute_pose(next_pose)
-            self.current_pose = next_pose
-            result, episode_running = self.check_episode_status(step, next_pose)
+
+            new_state, reward, result, episode_running = self.execute_action(action, step)
+            self.add_to_memory(state, action, reward, new_state, result)
+
+            episode_reward += reward
             step += 1
 
         if result['success']:
@@ -101,29 +102,26 @@ class Controller(object):
         else:
             print('Episode failed by %s\n' % (result['failure_mode']))
         episode = self.end_episode(result)
-        return episode
+        print(episode_reward)
+        return episode, episode_reward
 
-    def get_next_pose(self, step, previous_pose):
-        # if there is no movement return false
-        state = self.get_state()
-        delta = self.get_delta(step, state)
-        if abs(delta['x']) < 0.0001 and abs(delta['y']) < 0.0001:
-            return previous_pose, False
+    def add_to_memory(self, state, action, reward, new_state, result):
+        self.exp.add_step(state, action)
 
-        self.exp.add_step(state, delta)
-        pose = previous_pose
-        pose['x'] += delta['x']
-        pose['y'] += delta['y']
-        return pose, True
+    def begin_new_episode(self, case_name, case_number):
+        confidence, sigma = self.get_controller_confidence()
+        self.exp.new_episode(confidence, sigma, case_name, case_number)
+        if self.type == 'ddpg':
+            self.noise.reset()
 
     def end_episode(self, result):
         self.episode_count += 1
         episode = self.exp.end_episode(result)
         episode_length = len(self.exp.episode_df)
-        self.update_learnt_controller(episode.result, episode_length)
+        #self.update_learnt_controller(episode.result, episode_length)
         return episode
 
-    def check_episode_status(self, step, pose):
+    def check_episode_status(self, step):
 
         episode_running = True
 
@@ -186,15 +184,56 @@ class Controller(object):
     def get_state(self):
         return self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']]
 
-    def execute_pose(self, pose):
-        if pose['x'] > self.pose_limits['max_x']:
-            pose['x'] = self.pose_limits['max_x']
-        if pose['x'] < self.pose_limits['min_x']:
-            pose['x'] = self.pose_limits['min_x']
-        if pose['y'] > self.pose_limits['max_y']:
-            pose['y'] = self.pose_limits['max_y']
-        if pose['y'] < self.pose_limits['min_y']:
-            pose['y'] = self.pose_limits['min_y']
+    def execute_action(self, action, step):
+        rospy.wait_for_service('/gazebo/get_model_state')
+        get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
+        old_block_pose = get_model_state_prox('block','').pose
+
+        self.current_pose['x'] += action['x']
+        self.current_pose['y'] += action['y']
+        if self.current_pose['x'] > self.pose_limits['max_x']:
+            self.current_pose['x'] = self.pose_limits['max_x']
+        if self.current_pose['x'] < self.pose_limits['min_x']:
+            self.current_pose['x'] = self.pose_limits['min_x']
+        if self.current_pose['y'] > self.pose_limits['max_y']:
+            self.current_pose['y'] = self.pose_limits['max_y']
+        if self.current_pose['y'] < self.pose_limits['min_y']:
+            self.current_pose['y'] = self.pose_limits['min_y']
+        pose_goal = geometry_msgs.msg.Pose()
+        pose_goal.orientation.x = self.current_pose['qx']
+        pose_goal.orientation.y = self.current_pose['qy']
+        pose_goal.orientation.z = self.current_pose['qz']
+        pose_goal.orientation.w = self.current_pose['qw']
+        pose_goal.position.x = self.current_pose['x']
+        pose_goal.position.y = self.current_pose['y']
+        pose_goal.position.z = self.current_pose['z']
+        waypoints = [pose_goal]
+        plan, fraction = self.group.compute_cartesian_path(waypoints,  0.005, 0.0)
+        self.group.execute(plan, wait=True)
+
+        new_block_pose = get_model_state_prox('block','').pose
+        new_state = self.get_state()
+        result, episode_running = self.check_episode_status(step)
+        reward = self.get_dense_reward(old_block_pose, new_block_pose, result)
+
+        return new_state, reward, result, episode_running
+
+
+    def get_dense_reward(self, old_block_pose, new_block_pose, result):
+        reward = 0.0
+        targ = np.array([self.sim.goal_centre_x + 0.1, 0.0])
+        old = np.array([old_block_pose.position.x, old_block_pose.position.y])
+        new = np.array([new_block_pose.position.x, new_block_pose.position.y])
+        old_dist = np.linalg.norm(targ - old)
+        new_dist = np.linalg.norm(targ - new)
+        reward += (old_dist - new_dist)*500.0
+
+        if result['success']:
+            reward += 100.0
+        return reward
+
+
+    def go_to_pose(self, pose):
         pose_goal = geometry_msgs.msg.Pose()
         pose_goal.orientation.x = pose['qx']
         pose_goal.orientation.y = pose['qy']
@@ -208,32 +247,12 @@ class Controller(object):
         self.group.execute(plan, wait=True)
 
 
-class HandCodedController(Controller):
-    def __init__(self, sim):
-        Controller.__init__(self, sim)
-        self.type = 'hand_coded'
-
-    def get_delta(self, step, state):
-        dx = [0.04, 0.04, 0.04, 0.03, 0.05, 0.03, 0.05, 0.05, 0.05]
-        dy = [0.0, 0.0, -0.10, 0.05, 0.05, 0.02, 0.0, -0.05, 0.0]
-        return {'x':dx[step], 'y':dy[step]}
-
-    def max_steps(self, step):
-        if step > 7:
-            return True
-        else:
-            return False
-
 class TeleopController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.config = DemoConfig(bc_learning_rates = [0.0001, 0.0001],
                                 bc_steps_per_frame = 10, td_max = 0.5)
         self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 2.0)
-
-    def begin_new_episode(self, case_name, case_number):
-        confidence, sigma = self.get_controller_confidence()
-        self.exp.new_episode(confidence, sigma, case_name, case_number)
 
     def get_controller_confidence(self):
         return 1.0, 0.0
@@ -309,7 +328,7 @@ class KeypadController(TeleopController):
     def store_key_vel(self, data):
         self.key_vel = data
 
-    def get_delta(self, step, state):
+    def get_action(self, state, step):
         dx = self.time_step*self.key_vel.linear.x
         dy = self.time_step*self.key_vel.angular.z
         return {'x':dx, 'y':dy}
@@ -326,15 +345,13 @@ class LearntController(Controller):
         self.config = LearntConfig(rl_buffer_frames_min = 500000, ac_learning_rates = [0.00001, 0.00001],
                                 rl_steps_per_frame = 5, td_max = 0.5)
 
-    def begin_new_episode(self, case_name, case_number):
-        confidence, sigma = self.get_controller_confidence()
-        self.exp.new_episode(confidence, sigma, case_name, case_number)
+
 
     def get_controller_confidence(self):
         confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
         return confidence, sigma
 
-    def get_delta(self, step, state):
+    def get_action(self, state, step):
         action = self.policy.get_action(state)
         return {'x':action[0], 'y':action[1]}
 
@@ -352,6 +369,52 @@ class LearntController(Controller):
         controller.exp = save_info['exp']
         controller.policy = save_info['policy']
         return controller
+
+class DDPGController(Controller):
+
+    def __init__(self, sim):
+        Controller.__init__(self, sim)
+        self.type = 'ddpg'
+        self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
+        self.config = DDPGConfig()
+        self.agent = DDPGagent(self.num_states, self.num_actions)
+        self.action_space_high = np.array([0.05, 0.03])
+        self.action_space_low = np.array([-0.005, -0.03])
+        self.noise = OUNoise(self.action_space_low, self.action_space_high, noise_prop = 0.2)
+        self.batch_size = 128
+
+    def get_action(self, state, step):
+        action_normalised = self.agent.get_action(np.array(state))
+        action = self.to_action(action_normalised)
+        if step == 0:
+            print(action)
+        action = self.noise.get_action(action, step)
+        return {'x':action[0], 'y':action[1]}
+
+    def get_controller_confidence(self):
+        confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
+        return confidence, sigma
+
+    def to_action(self, action):
+        act_k = (self.action_space_high - self.action_space_low)/ 2.
+        act_b = (self.action_space_high + self.action_space_low)/ 2.
+        return act_k * action + act_b
+
+    def to_normalised_action(self, action):
+        act_k_inv = 2./(self.action_space_high - self.action_space_low)
+        act_b = (self.action_space_high + self.action_space_low)/ 2.
+        return act_k_inv * (action - act_b)
+
+    def add_to_memory(self, state, action, reward, new_state, result):
+        self.exp.add_step(state, action)
+        action_normalised = self.to_normalised_action(np.array([action['x'], action['y']]))
+        self.agent.memory.push(state, action_normalised, reward, new_state, result['success'])
+        if len(self.agent.memory) > self.batch_size:
+            self.agent.update(self.batch_size)
+
+class DDPGConfig:
+    def __init__(self):
+        pass
 
 class LearntConfig(object):
     def __init__(self, rl_buffer_frames_min, ac_learning_rates, rl_steps_per_frame, td_max):
