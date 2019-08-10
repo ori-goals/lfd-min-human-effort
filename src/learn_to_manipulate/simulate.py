@@ -133,7 +133,7 @@ class Simulation(object):
             table_sdf = f.read()
 
             table_initial_pose = Pose()
-            table_initial_pose.position.x = 0.55
+            table_initial_pose.position.x = 0.54
             table_initial_pose.position.y = 0.0
             table_initial_pose.position.z = 0.2
 

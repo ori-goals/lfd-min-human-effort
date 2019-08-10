@@ -21,17 +21,15 @@ from learn_to_manipulate.utils import qv_rotate
 
 class Controller(object):
     def __init__(self, sim):
-        self.init_pose = {'x':0.3, 'y':0.0, 'z':0.461}
-        self.init_ori = {'i':0.0, 'j':-1.7, 'k':3.14}
         moveit_commander.roscpp_initialize(sys.argv)
         self.robot = moveit_commander.RobotCommander()
         self.group = moveit_commander.MoveGroupCommander("manipulator")
-        self.steps_max = 2000
+        self.steps_max = 100
         self.time_step = 0.05
         self.sim = sim
-        self.max_pose_x = 0.78
+        self.pose_limits = {'min_x':0.25, 'max_x':0.75, 'min_y':-0.25, 'max_y':0.25}
         self.episode_count = 0
-        self.pose = {'x':0.75, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
+        self.init_pose = {'x':0.29, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
 
     @classmethod
@@ -46,18 +44,20 @@ class Controller(object):
         return {'type':self.type, 'exp':self.exp, 'config':self.config}
 
     def set_arm_initial(self):
+        qxs = [-1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, self.init_pose['qx']]
+        qys = [0.0, 0.0, 0.0, 0.0, 0.0, 0.6697, 0.6697, self.init_pose['qy']]
+        qzs = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, self.init_pose['qz']]
+        qws = [0.0, 0.0, 0.0, 0.0, 0.0, 0.7426, 0.7426, self.init_pose['qw']]
+        xs = [0.816, 0.70, 0.7, 0.7, 0.7, 0.77, 0.77, self.init_pose['x']]
+        ys = [0.191, 0.20, 0.199, 0.2, 0.2, 0.2, 0.0, self.init_pose['y']]
+        zs = [0.0, 0.12, 0.253, 0.35, 0.35, 0.35, 0.37, self.init_pose['z']]
         current_pose = self.group.get_current_pose().pose
         if current_pose.position.z > 0.3:
-            return
+            start_ind = len(qxs) - 1
+        else:
+            start_ind = 0
 
-        qxs = [-1.0, -1.0, -1.0, -1.0, -1.0, 0.0, self.pose['qx']]
-        qys = [0.0, 0.0, 0.0, 0.0, 0.0, 0.6697, self.pose['qy']]
-        qzs = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, self.pose['qz']]
-        qws = [0.0, 0.0, 0.0, 0.0, 0.0, 0.7426, self.pose['qw']]
-        xs = [0.816, 0.70, 0.7, 0.7, 0.7, 0.75, self.pose['x']]
-        ys = [0.191, 0.20, 0.199, 0.2, 0.2, 0.2, self.pose['y']]
-        zs = [0.0, 0.12, 0.253, 0.35, 0.35, 0.35, self.pose['z']]
-        for ind in range(len(qxs)):
+        for ind in range(start_ind, len(qxs)):
             pose_goal = geometry_msgs.msg.Pose()
             pose_goal.orientation.x = qxs[ind]
             pose_goal.orientation.y = qys[ind]
@@ -66,28 +66,32 @@ class Controller(object):
             pose_goal.position.x = xs[ind]
             pose_goal.position.y = ys[ind]
             pose_goal.position.z = zs[ind]
-            self.group.set_pose_target(pose_goal)
-            plan = self.group.go(wait=True)
-            self.group.stop()
-            self.group.clear_pose_targets()
+            if ind < len(qxs) - 1:
+                self.group.set_pose_target(pose_goal)
+                plan = self.group.go(wait=True)
+                self.group.stop()
+                self.group.clear_pose_targets()
+            else:
+                self.execute_pose(self.init_pose)
 
     def begin_new_episode(self):
         pass
 
     def run_episode(self, case_name, case_number):
+        self.current_pose = copy.copy(self.init_pose)
         print("Starting new episode with controller type: %s" % (self.type))
         self.begin_new_episode(case_name, case_number)
         episode_running = True
         step = 0
         while episode_running:
-            next_pose, moved = self.get_next_pose(step, self.pose)
+            next_pose, moved = self.get_next_pose(step, self.current_pose)
 
             # if there is no movement sleep and try again
             if not moved:
                 rospy.sleep(0.1)
                 continue
             self.execute_pose(next_pose)
-            self.pose = next_pose
+            self.current_pose = next_pose
             result, episode_running = self.check_episode_status(step, next_pose)
             step += 1
 
@@ -154,12 +158,6 @@ class Controller(object):
             episode_running = False
             return result, episode_running
 
-        # if the maximum x is exceeded
-        if pose['x'] > self.max_pose_x:
-            result = {'success':False, 'failure_mode':'max_x_exceeded'}
-            episode_running = False
-            return result, episode_running
-
         # if the maximum step count is exceeded
         if self.max_steps(step):
             result = {'success':False, 'failure_mode':'timeout'}
@@ -185,21 +183,25 @@ class Controller(object):
         self.current_laser_scan = scan
 
     def get_state(self):
-        return self.current_laser_scan.tolist() + [self.pose['x'], self.pose['y']]
+        return self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']]
 
     def execute_pose(self, pose):
+        if pose['x'] > self.pose_limits['max_x']:
+            pose['x'] = self.pose_limits['max_x']
+        if pose['x'] < self.pose_limits['min_x']:
+            pose['x'] = self.pose_limits['min_x']
+        if pose['y'] > self.pose_limits['max_y']:
+            pose['y'] = self.pose_limits['max_y']
+        if pose['y'] < self.pose_limits['min_y']:
+            pose['y'] = self.pose_limits['min_y']
         pose_goal = geometry_msgs.msg.Pose()
-        pose_goal.orientation.x = self.pose['qx']
-        pose_goal.orientation.y = self.pose['qy']
-        pose_goal.orientation.z = self.pose['qz']
-        pose_goal.orientation.w = self.pose['qw']
-        pose_goal.position.x = self.pose['x']
-        pose_goal.position.y = self.pose['y']
-        pose_goal.position.z = self.pose['z']
-        #self.group.set_pose_target(pose_goal)
-        #plan = self.group.go(wait=True)
-        #self.group.stop()
-        #self.group.clear_pose_targets()
+        pose_goal.orientation.x = pose['qx']
+        pose_goal.orientation.y = pose['qy']
+        pose_goal.orientation.z = pose['qz']
+        pose_goal.orientation.w = pose['qw']
+        pose_goal.position.x = pose['x']
+        pose_goal.position.y = pose['y']
+        pose_goal.position.z = pose['z']
         waypoints = [pose_goal]
         plan, fraction = self.group.compute_cartesian_path(waypoints,  0.005, 0.0)
         self.group.execute(plan, wait=True)
