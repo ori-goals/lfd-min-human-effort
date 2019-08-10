@@ -24,7 +24,7 @@ class Controller(object):
         moveit_commander.roscpp_initialize(sys.argv)
         self.robot = moveit_commander.RobotCommander()
         self.group = moveit_commander.MoveGroupCommander("manipulator")
-        self.steps_max = 100
+        self.steps_max = 60
         self.time_step = 0.05
         self.sim = sim
         self.pose_limits = {'min_x':0.25, 'max_x':0.75, 'min_y':-0.25, 'max_y':0.25}
@@ -229,7 +229,7 @@ class TeleopController(Controller):
         Controller.__init__(self, sim)
         self.config = DemoConfig(bc_learning_rates = [0.0001, 0.0001],
                                 bc_steps_per_frame = 10, td_max = 0.5)
-        self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 1.0)
+        self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 2.0)
 
     def begin_new_episode(self, case_name, case_number):
         confidence, sigma = self.get_controller_confidence()
@@ -320,10 +320,10 @@ class LearntController(Controller):
         Controller.__init__(self, sim)
         self.type = 'learnt'
         nominal_means = np.array([0.02, 0.0])
-        nominal_sigma_exps = np.array([-5.0, -5.0])
+        nominal_sigma_exps = np.array([-5.5, -5.5])
         self.policy = ActorNN(nominal_means, nominal_sigma_exps)
-        self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 1.0)
-        self.config = LearntConfig(rl_buffer_frames_min = 200, ac_learning_rates = [0.00001, 0.00001],
+        self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
+        self.config = LearntConfig(rl_buffer_frames_min = 500000, ac_learning_rates = [0.00001, 0.00001],
                                 rl_steps_per_frame = 5, td_max = 0.5)
 
     def begin_new_episode(self, case_name, case_number):

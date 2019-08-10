@@ -102,10 +102,10 @@ class ActorNN():
             current_value, sigma, alpha, beta = experience.get_state_value(current_state)
 
             # if the reward is not -1 use the reward else use the td error
-            if int(round(experience_df['reward'])) != -1:
-                onestep_td_error = experience_df['reward'] - current_value
+            if int(round(step_df['reward'])) != -1:
+                onestep_td_error = step_df['reward'] - current_value
             else:
-                next_value, sigma, alpha, beta = experience_state_value(next_state)
+                next_value, sigma, alpha, beta = experience.get_state_value(next_state)
                 onestep_td_error = next_value - current_value
 
             # enforce limit on maximum error

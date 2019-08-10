@@ -19,7 +19,7 @@ class Simulation(object):
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
         self.block_width = 0.04
         self.goal_width_x = 0.001
-        self.goal_centre_x = 0.7
+        self.goal_centre_x = 0.65
         self.all_runs = []
         self.demo_cost = 0.3
         self.success_reward = 1.0
@@ -27,12 +27,12 @@ class Simulation(object):
         self.alpha = 0.5
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
+        self.delete_block()
         self.controllers[0].set_arm_initial()
         self.spawn_table()
         self.spawn_block(case_name, case_number)
         controller = self.choose_controller(switching_method, controller_type)
         episode = controller.run_episode(case_name, case_number)
-        self.delete_block()
         self.all_runs.append(episode)
 
     @classmethod
@@ -71,7 +71,6 @@ class Simulation(object):
                 angle_deg = np.random.uniform(spec['min_angle_deg'], spec['max_angle_deg'])
                 block_name = random.choice(spec['block_names'])
                 writer.writerow([case, x, y, angle_deg, block_name])
-
 
     def save_simulation(self, folder):
         fname = time.strftime("%Y-%m-%d-%H-%M")
@@ -118,6 +117,7 @@ class Simulation(object):
                     ucb -= self.demo_cost
                 if ucb > max_ucb:
                     chosen_controller = controller
+                    max_ucb = ucb
                 print('Controller type %s has confidence %.4f with sigma %.4f and ucb %.4f' %
                     (controller.type, confidence, sigma, ucb))
             return chosen_controller

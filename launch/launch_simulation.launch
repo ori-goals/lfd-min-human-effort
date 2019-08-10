@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node name="run_simulation" pkg="learn_to_manipulate" type="run_sim.py" output="screen"/>
+</launch>
