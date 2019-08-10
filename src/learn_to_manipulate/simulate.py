@@ -19,7 +19,7 @@ class Simulation(object):
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
         self.block_width = 0.04
         self.goal_width_x = 0.001
-        self.goal_centre_x = 0.78
+        self.goal_centre_x = 0.7
         self.all_runs = []
         self.demo_cost = 0.3
         self.success_reward = 1.0
