@@ -73,6 +73,7 @@ class Controller(object):
                 self.group.clear_pose_targets()
             else:
                 self.execute_pose(self.init_pose)
+        rospy.sleep(1.0)
 
     def begin_new_episode(self):
         pass

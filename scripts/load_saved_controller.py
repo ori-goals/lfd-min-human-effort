@@ -6,8 +6,13 @@ import rospy
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate')
     sim = Simulation()
-    saved_controller_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/2019-08-08-15-15_keypad_teleop2_learnt0.pkl'
+    saved_controller_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/similar_cases_new_arm.pkl'
     sim.add_controllers({'learnt':{}, 'saved_teleop':{'file':saved_controller_file, 'type':'keypad_teleop'}})
-    case_number = 1
-    case_name = 'test_cases'
-    sim.run_new_episode(case_name, case_number, controller_type = 'keypad_teleop')
+    case_name = 'similar_cases'
+    sim.run_new_episode(case_name, 0, controller_type = 'learnt')
+
+    for case_number in range(20):
+        sim.run_new_episode(case_name, case_number, controller_type = 'keypad_teleop')
+    for case_number in range(20):
+        sim.run_new_episode(case_name, case_number, controller_type = 'keypad_teleop')
+    sim.run_new_episode(case_name, 0, controller_type = 'learnt')

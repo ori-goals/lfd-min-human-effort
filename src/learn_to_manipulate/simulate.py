@@ -32,6 +32,7 @@ class Simulation(object):
         self.spawn_block(case_name, case_number)
         controller = self.choose_controller(switching_method, controller_type)
         episode = controller.run_episode(case_name, case_number)
+        self.delete_block()
         self.all_runs.append(episode)
 
     @classmethod
@@ -151,7 +152,7 @@ class Simulation(object):
             spawn_model_prox("table", table_sdf, "simulation", table_initial_pose, "world")
             spawn_model_prox("goal", goal_sdf, "simulation", self.goal_pose, "world")
 
-    def spawn_block(self, case_name, case_number):
+    def delete_block(self):
         rospy.wait_for_service('/gazebo/get_world_properties')
         get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
         world = get_world_properties_prox()
@@ -160,6 +161,8 @@ class Simulation(object):
             rospy.wait_for_service('/gazebo/delete_model')
             delete_model_prox = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
             delete_model_prox('block')
+
+    def spawn_block(self, case_name, case_number):
 
         # find the correct case from the file
         my_path = os.path.abspath(os.path.dirname(__file__))
@@ -182,7 +185,7 @@ class Simulation(object):
         initial_pose = Pose()
         initial_pose.position.x = x
         initial_pose.position.y = y
-        initial_pose.position.z = 0.5
+        initial_pose.position.z = 0.43
 
         initial_pose.orientation.z = np.sin(np.radians(angle_deg)/2)
         initial_pose.orientation.w = np.cos(np.radians(angle_deg)/2)
