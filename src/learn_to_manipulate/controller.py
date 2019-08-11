@@ -187,14 +187,13 @@ class Controller(object):
 
     def store_laser(self, data):
         scan = np.array(data.ranges)
-        range_max = 1.0
+        range_max = 2.0
         indexes = scan > range_max
         scan[indexes] = range_max
         self.current_laser_scan = scan
 
     def get_state(self):
-        #return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])-0.3
-        return np.array([self.current_pose['x'], self.current_pose['y']])
+        return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])
 
     def execute_action(self, action, step):
         rospy.wait_for_service('/gazebo/get_model_state')
@@ -228,32 +227,19 @@ class Controller(object):
         new_state = self.get_state()
         result, episode_running = self.check_episode_status(step)
         reward = self.get_dense_reward(old_block_pose, new_block_pose, result)
-
-        ## Modify the dense reward
-        new_arm_pose = copy.copy(self.current_pose)
-        targ = np.array([0.5, -0.05])
-        old = np.array([old_arm_pose['x'], old_arm_pose['y']])
-        new = np.array([new_arm_pose['x'], new_arm_pose['y']])
-        old_dist = np.linalg.norm(targ - old)
-        new_dist = np.linalg.norm(targ - new)
-        reward = (old_dist - new_dist)*500.0
-        reward = max(0, reward)
-        if new_dist < 0.1:
-            reward += 50.0
         return new_state, reward, result, episode_running
 
 
     def get_dense_reward(self, old_block_pose, new_block_pose, result):
-        reward = -0.015
         targ = np.array([self.sim.goal_centre_x + 10.0, 0.0])
         old = np.array([old_block_pose.position.x, old_block_pose.position.y])
         new = np.array([new_block_pose.position.x, new_block_pose.position.y])
         old_dist = np.linalg.norm(targ - old)
         new_dist = np.linalg.norm(targ - new)
-        reward += (old_dist - new_dist)*5.0
+        reward = (old_dist - new_dist)*500.0
 
         if result['success']:
-            reward += 1.0
+            reward += 100.0
         return reward
 
 
@@ -402,12 +388,17 @@ class DDPGController(Controller):
         self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
         self.action_space_high = np.array([0.05, 0.03])
         self.action_space_low = np.array([-0.03, -0.03])
-        self.state_high = np.array([0.8, 0.3])
-        self.state_low = np.array([0.0, -0.3])
+
+        laser_low = np.zeros(50)
+        arm_low = np.array([0.0, -0.3])
+        laser_high = np.ones(50)*2
+        arm_high = ([0.8, 0.3])
+        self.state_high = np.concatenate((laser_high, arm_high))
+        self.state_low = np.concatenate((laser_low, arm_low))
 
         cuda = torch.cuda.is_available() #check for CUDA
         self.device   = torch.device("cuda" if cuda else "cpu")
-        state_dim = 2
+        state_dim = 52
         action_dim = 2
         self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
         self.critic  = Critic(state_dim, action_dim).to(self.device)
@@ -421,8 +412,8 @@ class DDPGController(Controller):
         for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
             target_param.data.copy_(param.data)
 
-        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.001)#, weight_decay=0.01)
-        self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=0.0001)
+        self.q_optimizer  = opt.SGD(self.critic.parameters(),  lr=0.001)#, weight_decay=0.01)
+        self.policy_optimizer = opt.SGD(self.actor.parameters(), lr=0.00005)
 
 
         self.memory = ReplayBuffer(50000)
@@ -432,9 +423,9 @@ class DDPGController(Controller):
         self.plot_steps = []
         self.epsilon = 1
         self.epsilon_decay = 1e-6
-        self.buffer_start = 100
+        self.buffer_start = 200
         self.batch_size = 128
-        self.tau = 0.01
+        self.tau = 0.02
         self.gamma = 0.99
         self.episode_number = 0
 
@@ -456,7 +447,7 @@ class DDPGController(Controller):
             state = self.get_state()
             state_norm = self.to_normalised_state(state)
             action_norm = self.actor.get_action(state)
-            action_norm += self.noise()*max(0, self.epsilon)*0.4
+            action_norm += self.noise()*max(0, self.epsilon)*0.5
             action_norm = np.clip(action_norm, -1., 1.)
 
             action = self.to_action(action_norm)
