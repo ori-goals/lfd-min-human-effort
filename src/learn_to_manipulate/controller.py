@@ -434,7 +434,7 @@ class DDPGController(Controller):
         self.epsilon_decay = 1e-6
         self.buffer_start = 100
         self.batch_size = 128
-        self.tau = 0.05
+        self.tau = 0.01
         self.gamma = 0.99
         self.episode_number = 0
 
