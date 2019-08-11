@@ -84,7 +84,6 @@ class Controller(object):
         rospy.sleep(1.0)
 
     def run_episode(self, case_name, case_number):
-        print("Starting new episode with controller type: %s" % (self.type))
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
 
@@ -193,7 +192,15 @@ class Controller(object):
         self.current_laser_scan = scan
 
     def get_state(self):
-        return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])
+        rospy.wait_for_service('/gazebo/get_model_state')
+        get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
+        block_pose = get_model_state_prox('block','').pose
+        blockx = block_pose.position.x
+        blocky = block_pose.position.y
+        block_angle = np.arccos(block_pose.orientation.w)*2
+        if block_pose.orientation.z < 0:
+            block_angle *= -1.
+        return np.array([blockx, blocky, block_angle, self.current_pose['x'], self.current_pose['y']])
 
     def execute_action(self, action, step):
         rospy.wait_for_service('/gazebo/get_model_state')
@@ -236,10 +243,10 @@ class Controller(object):
         new = np.array([new_block_pose.position.x, new_block_pose.position.y])
         old_dist = np.linalg.norm(targ - old)
         new_dist = np.linalg.norm(targ - new)
-        reward = (old_dist - new_dist)*500.0
+        reward = (old_dist - new_dist)*5.0
 
         if result['success']:
-            reward += 100.0
+            reward += 1.0
         return reward
 
 
@@ -389,16 +396,12 @@ class DDPGController(Controller):
         self.action_space_high = np.array([0.05, 0.03])
         self.action_space_low = np.array([-0.03, -0.03])
 
-        laser_low = np.zeros(50)
-        arm_low = np.array([0.0, -0.3])
-        laser_high = np.ones(50)*2
-        arm_high = ([0.8, 0.3])
-        self.state_high = np.concatenate((laser_high, arm_high))
-        self.state_low = np.concatenate((laser_low, arm_low))
+        self.state_high = np.array([1.0, 0.3, 1.57, 1.0, 0.3])
+        self.state_low = np.array([0.0, -0.3, -1.57, 0.0, -0.3])
 
         cuda = torch.cuda.is_available() #check for CUDA
         self.device   = torch.device("cuda" if cuda else "cpu")
-        state_dim = 52
+        state_dim = 5
         action_dim = 2
         self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
         self.critic  = Critic(state_dim, action_dim).to(self.device)
@@ -412,8 +415,8 @@ class DDPGController(Controller):
         for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
             target_param.data.copy_(param.data)
 
-        self.q_optimizer  = opt.SGD(self.critic.parameters(),  lr=0.001)#, weight_decay=0.01)
-        self.policy_optimizer = opt.SGD(self.actor.parameters(), lr=0.00005)
+        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.01)#, weight_decay=0.01)
+        self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=0.0001)
 
 
         self.memory = ReplayBuffer(50000)
@@ -425,7 +428,7 @@ class DDPGController(Controller):
         self.epsilon_decay = 1e-6
         self.buffer_start = 200
         self.batch_size = 128
-        self.tau = 0.02
+        self.tau = 0.01
         self.gamma = 0.99
         self.episode_number = 0
 
@@ -447,7 +450,7 @@ class DDPGController(Controller):
             state = self.get_state()
             state_norm = self.to_normalised_state(state)
             action_norm = self.actor.get_action(state)
-            action_norm += self.noise()*max(0, self.epsilon)*0.5
+            action_norm += self.noise()*max(0, self.epsilon)*0.2
             action_norm = np.clip(action_norm, -1., 1.)
 
             action = self.to_action(action_norm)
