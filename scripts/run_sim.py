@@ -31,7 +31,7 @@ if __name__ == "__main__" :
     case_name = 'lfd_rl_aug10'
     dense_rewards = []
     results = []
-    for i in range(400):
+    for i in range(2000):
         episode, dense_reward = sim.run_new_episode(case_name, 5, controller_type = 'ddpg')
 
         print(i)

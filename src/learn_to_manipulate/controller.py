@@ -197,10 +197,12 @@ class Controller(object):
         block_pose = get_model_state_prox('block','').pose
         blockx = block_pose.position.x
         blocky = block_pose.position.y
+        xdiff = blockx - self.current_pose['x']
+        ydiff = blocky - self.current_pose['y']
         block_angle = np.arccos(block_pose.orientation.w)*2
         if block_pose.orientation.z < 0:
             block_angle *= -1.
-        return np.array([blockx, blocky, block_angle, self.current_pose['x'], self.current_pose['y']])
+        return np.array([0.0, 0.0, block_angle, xdiff, ydiff])
 
     def execute_action(self, action, step):
         rospy.wait_for_service('/gazebo/get_model_state')
@@ -428,7 +430,7 @@ class DDPGController(Controller):
         self.epsilon_decay = 1e-6
         self.buffer_start = 200
         self.batch_size = 128
-        self.tau = 0.01
+        self.tau = 0.001
         self.gamma = 0.99
         self.episode_number = 0
 
@@ -450,7 +452,7 @@ class DDPGController(Controller):
             state = self.get_state()
             state_norm = self.to_normalised_state(state)
             action_norm = self.actor.get_action(state)
-            action_norm += self.noise()*max(0, self.epsilon)*0.2
+            action_norm += self.noise()*max(0, self.epsilon)*0.5
             action_norm = np.clip(action_norm, -1., 1.)
 
             action = self.to_action(action_norm)
