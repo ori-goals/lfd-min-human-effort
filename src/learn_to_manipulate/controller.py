@@ -25,7 +25,7 @@ class Controller(object):
         moveit_commander.roscpp_initialize(sys.argv)
         self.robot = moveit_commander.RobotCommander()
         self.group = moveit_commander.MoveGroupCommander("manipulator")
-        self.steps_max = 80
+        self.steps_max = 60
         self.time_step = 0.05
         self.sim = sim
         self.num_states = 52
@@ -82,6 +82,7 @@ class Controller(object):
         print("Starting new episode with controller type: %s" % (self.type))
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
+        self.agent.print_qval(self.get_state())
         episode_running = True
         episode_reward = 0.0
         step = 0
@@ -176,19 +177,21 @@ class Controller(object):
 
     def store_laser(self, data):
         scan = np.array(data.ranges)
-        range_max = 5.0
+        range_max = 1.0
         indexes = scan > range_max
         scan[indexes] = range_max
         self.current_laser_scan = scan
 
     def get_state(self):
-        return self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']]
+        #return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])-0.3
+        return [self.current_pose['x'], self.current_pose['y']]
 
     def execute_action(self, action, step):
         rospy.wait_for_service('/gazebo/get_model_state')
         get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
         old_block_pose = get_model_state_prox('block','').pose
 
+        old_arm_pose = copy.copy(self.current_pose)
         self.current_pose['x'] += action['x']
         self.current_pose['y'] += action['y']
         if self.current_pose['x'] > self.pose_limits['max_x']:
@@ -216,20 +219,30 @@ class Controller(object):
         result, episode_running = self.check_episode_status(step)
         reward = self.get_dense_reward(old_block_pose, new_block_pose, result)
 
+        ## Modify the dense reward
+        new_arm_pose = copy.copy(self.current_pose)
+        targ = np.array([0.6, 0.1])
+        old = np.array([old_arm_pose['x'], old_arm_pose['y']])
+        new = np.array([new_arm_pose['x'], new_arm_pose['y']])
+        old_dist = np.linalg.norm(targ - old)
+        new_dist = np.linalg.norm(targ - new)
+        reward = (old_dist - new_dist)*2.0
+        if new_dist < 0.03:
+            reward += 0.1
         return new_state, reward, result, episode_running
 
 
     def get_dense_reward(self, old_block_pose, new_block_pose, result):
-        reward = 0.0
-        targ = np.array([self.sim.goal_centre_x + 0.1, 0.0])
+        reward = -0.015
+        targ = np.array([self.sim.goal_centre_x + 10.0, 0.0])
         old = np.array([old_block_pose.position.x, old_block_pose.position.y])
         new = np.array([new_block_pose.position.x, new_block_pose.position.y])
         old_dist = np.linalg.norm(targ - old)
         new_dist = np.linalg.norm(targ - new)
-        reward += (old_dist - new_dist)*500.0
+        reward += (old_dist - new_dist)*5.0
 
         if result['success']:
-            reward += 100.0
+            reward += 1.0
         return reward
 
 
@@ -377,11 +390,16 @@ class DDPGController(Controller):
         self.type = 'ddpg'
         self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
         self.config = DDPGConfig()
-        self.agent = DDPGagent(self.num_states, self.num_actions)
+        self.agent = DDPGagent(2, self.num_actions)
         self.action_space_high = np.array([0.05, 0.03])
-        self.action_space_low = np.array([-0.005, -0.03])
-        self.noise = OUNoise(self.action_space_low, self.action_space_high, noise_prop = 0.2)
+        self.action_space_low = np.array([-0.01, -0.03])
+        self.noise = OUNoise(self.action_space_low, self.action_space_high, noise_prop = 0.3)
         self.batch_size = 128
+        action = [0.03, 0.03]
+        norm = self.to_normalised_action(action)
+        print(norm)
+        action = self.to_action(norm)
+        print(action)
 
     def get_action(self, state, step):
         action_normalised = self.agent.get_action(np.array(state))

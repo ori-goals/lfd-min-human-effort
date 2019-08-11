@@ -1,39 +1,44 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.autograd
-from torch.autograd import Variable
+
 
 class Critic(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
+
+    def __init__(self, obs_dim, action_dim):
         super(Critic, self).__init__()
-        self.linear1 = nn.Linear(input_size, hidden_size)
-        self.linear2 = nn.Linear(hidden_size, hidden_size)
-        self.linear3 = nn.Linear(hidden_size, output_size)
 
-    def forward(self, state, action):
-        """
-        Params state and actions are torch tensors
-        """
-        x = torch.cat([state, action], 1)
+        self.obs_dim = obs_dim
+        self.action_dim = action_dim
+
+        self.linear1 = nn.Linear(self.obs_dim, 1024)
+        self.linear2 = nn.Linear(1024 + self.action_dim, 512)
+        self.linear3 = nn.Linear(512, 300)
+        self.linear4 = nn.Linear(300, 1)
+
+    def forward(self, x, a):
         x = F.relu(self.linear1(x))
-        x = F.relu(self.linear2(x))
-        x = self.linear3(x)
+        xa_cat = torch.cat([x,a], 1)
+        xa = F.relu(self.linear2(xa_cat))
+        xa = F.relu(self.linear3(xa))
+        qval = self.linear4(xa)
 
-        return x
+        return qval
 
 class Actor(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, learning_rate = 3e-4):
-        super(Actor, self).__init__()
-        self.linear1 = nn.Linear(input_size, hidden_size)
-        self.linear2 = nn.Linear(hidden_size, hidden_size)
-        self.linear3 = nn.Linear(hidden_size, output_size)
 
-    def forward(self, state):
-        """
-        Param state is a torch tensor
-        """
-        x = F.relu(self.linear1(state))
+    def __init__(self, obs_dim, action_dim):
+        super(Actor, self).__init__()
+
+        self.obs_dim = obs_dim
+        self.action_dim = action_dim
+
+        self.linear1 = nn.Linear(self.obs_dim, 512)
+        self.linear2 = nn.Linear(512, 128)
+        self.linear3 = nn.Linear(128, self.action_dim)
+
+    def forward(self, obs):
+        x = F.relu(self.linear1(obs))
         x = F.relu(self.linear2(x))
         x = torch.tanh(self.linear3(x))
 
