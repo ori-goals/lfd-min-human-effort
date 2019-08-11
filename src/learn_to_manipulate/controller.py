@@ -417,7 +417,7 @@ class DDPGController(Controller):
         for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
             target_param.data.copy_(param.data)
 
-        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.01)#, weight_decay=0.01)
+        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.005)#, weight_decay=0.01)
         self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=0.0001)
 
 
@@ -430,7 +430,7 @@ class DDPGController(Controller):
         self.epsilon_decay = 1e-6
         self.buffer_start = 200
         self.batch_size = 128
-        self.tau = 0.001
+        self.tau = 0.01
         self.gamma = 0.99
         self.episode_number = 0
 
@@ -451,7 +451,7 @@ class DDPGController(Controller):
             self.epsilon -= self.epsilon_decay
             state = self.get_state()
             state_norm = self.to_normalised_state(state)
-            action_norm = self.actor.get_action(state)
+            action_norm = self.actor.get_action(state_norm)
             action_norm += self.noise()*max(0, self.epsilon)*0.5
             action_norm = np.clip(action_norm, -1., 1.)
 

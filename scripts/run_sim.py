@@ -28,12 +28,12 @@ if __name__ == "__main__" :
     #saved_controller_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/similar_cases_teleop.pkl'
     sim.add_controllers({'ddpg':{}})
 
-    case_name = 'lfd_rl_aug10'
+    case_name = 'rl_attempt_aug11'
     dense_rewards = []
     results = []
     for i in range(2000):
-        episode, dense_reward = sim.run_new_episode(case_name, 5, controller_type = 'ddpg')
+        episode, dense_reward = sim.run_new_episode(case_name, i, controller_type = 'ddpg')
 
         print(i)
-        if (i-3) % 10 == 0:    # print every print_every episodes
+        if (i-9) % 10 == 0:    # print every print_every episodes
             subplot(sim.controllers[0])
