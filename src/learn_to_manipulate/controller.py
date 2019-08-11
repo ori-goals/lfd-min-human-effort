@@ -4,21 +4,26 @@ import rospy
 import tf
 import pickle
 import copy
+import torch
 import controller_manager_msgs.srv
 import trajectory_msgs.msg
 import os.path
 import numpy as np
 import moveit_commander
+import torch.optim as opt
 import moveit_msgs.msg
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, Twist
 from sensor_msgs.msg import LaserScan
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
+from torch import nn
 from learn_to_manipulate.actor_nn import ActorNN
 from learn_to_manipulate.experience import Experience
 from learn_to_manipulate.utils import qv_rotate
 from learn_to_manipulate.ddpg import DDPGagent
 from utils import *
+from matplotlib import pyplot as plt
+from learn_to_manipulate.ddpg_models import Critic, Actor
 
 class Controller(object):
     def __init__(self, sim):
@@ -82,7 +87,7 @@ class Controller(object):
         print("Starting new episode with controller type: %s" % (self.type))
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
-        self.agent.print_qval(self.get_state())
+
         episode_running = True
         episode_reward = 0.0
         step = 0
@@ -110,15 +115,20 @@ class Controller(object):
         self.exp.add_step(state, action)
 
     def begin_new_episode(self, case_name, case_number):
-        confidence, sigma = self.get_controller_confidence()
-        self.exp.new_episode(confidence, sigma, case_name, case_number)
+
         if self.type == 'ddpg':
-            self.noise.reset()
+            pass
+        else:
+            confidence, sigma = self.get_controller_confidence()
+            self.exp.new_episode(confidence, sigma, case_name, case_number)
 
     def end_episode(self, result):
         self.episode_count += 1
-        episode = self.exp.end_episode(result)
-        episode_length = len(self.exp.episode_df)
+        if self.type == 'ddpg':
+            episode = 5
+        else:
+            episode = self.exp.end_episode(result)
+            episode_length = len(self.exp.episode_df)
         #self.update_learnt_controller(episode.result, episode_length)
         return episode
 
@@ -184,7 +194,7 @@ class Controller(object):
 
     def get_state(self):
         #return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])-0.3
-        return [self.current_pose['x'], self.current_pose['y']]
+        return np.array([self.current_pose['x'], self.current_pose['y']])
 
     def execute_action(self, action, step):
         rospy.wait_for_service('/gazebo/get_model_state')
@@ -221,14 +231,15 @@ class Controller(object):
 
         ## Modify the dense reward
         new_arm_pose = copy.copy(self.current_pose)
-        targ = np.array([0.6, 0.1])
+        targ = np.array([0.5, -0.05])
         old = np.array([old_arm_pose['x'], old_arm_pose['y']])
         new = np.array([new_arm_pose['x'], new_arm_pose['y']])
         old_dist = np.linalg.norm(targ - old)
         new_dist = np.linalg.norm(targ - new)
-        reward = (old_dist - new_dist)*2.0
-        if new_dist < 0.03:
-            reward += 0.1
+        reward = (old_dist - new_dist)*500.0
+        reward = max(0, reward)
+        if new_dist < 0.1:
+            reward += 50.0
         return new_state, reward, result, episode_running
 
 
@@ -389,17 +400,138 @@ class DDPGController(Controller):
         Controller.__init__(self, sim)
         self.type = 'ddpg'
         self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
-        self.config = DDPGConfig()
-        self.agent = DDPGagent(2, self.num_actions)
         self.action_space_high = np.array([0.05, 0.03])
-        self.action_space_low = np.array([-0.01, -0.03])
-        self.noise = OUNoise(self.action_space_low, self.action_space_high, noise_prop = 0.3)
+        self.action_space_low = np.array([-0.03, -0.03])
+        self.state_high = np.array([0.8, 0.3])
+        self.state_low = np.array([0.0, -0.3])
+
+        cuda = torch.cuda.is_available() #check for CUDA
+        self.device   = torch.device("cuda" if cuda else "cpu")
+        state_dim = 2
+        action_dim = 2
+        self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
+        self.critic  = Critic(state_dim, action_dim).to(self.device)
+        self.actor = Actor(state_dim, action_dim).to(self.device)
+        self.target_critic  = Critic(state_dim, action_dim).to(self.device)
+        self.target_actor = Actor(state_dim, action_dim).to(self.device)
+
+        for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
+            target_param.data.copy_(param.data)
+
+        for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
+            target_param.data.copy_(param.data)
+
+        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.001)#, weight_decay=0.01)
+        self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=0.0001)
+
+
+        self.memory = ReplayBuffer(50000)
+        self.plot_reward = []
+        self.plot_policy = []
+        self.plot_q = []
+        self.plot_steps = []
+        self.epsilon = 1
+        self.epsilon_decay = 1e-6
+        self.buffer_start = 100
         self.batch_size = 128
-        action = [0.03, 0.03]
-        norm = self.to_normalised_action(action)
-        print(norm)
-        action = self.to_action(norm)
-        print(action)
+        self.tau = 0.05
+        self.gamma = 0.99
+        self.episode_number = 0
+
+    def get_controller_confidence(self):
+        return 1.0, 0.0
+
+
+    def run_episode(self, case_name, case_number):
+        print("Starting new episode with controller type: %s" % (self.type))
+        self.current_pose = copy.copy(self.init_pose)
+        self.begin_new_episode(case_name, case_number)
+        episode_running = True
+        ep_q_value = 0.
+        episode_reward = 0.0
+        step = 0
+        self.noise.reset()
+        while episode_running:
+            self.epsilon -= self.epsilon_decay
+            state = self.get_state()
+            state_norm = self.to_normalised_state(state)
+            action_norm = self.actor.get_action(state)
+            action_norm += self.noise()*max(0, self.epsilon)*0.4
+            action_norm = np.clip(action_norm, -1., 1.)
+
+            action = self.to_action(action_norm)
+
+            new_state, reward, result, episode_running = self.execute_action({'x':action[0], 'y':action[1]}, step)
+            new_state_norm = self.to_normalised_state(new_state)
+            terminal = not episode_running
+            if step == 0:
+                print(action)
+            self.memory.add(state_norm, action_norm, reward, terminal, new_state_norm)
+            if self.memory.count() > self.buffer_start:
+                policy_loss, q_loss = self.update()
+            episode_reward += reward
+            step += 1
+
+
+        self.plot_reward.append([episode_reward, self.episode_number+1])
+        self.plot_steps.append([step+1, self.episode_number+1])
+        try:
+            self.plot_policy.append([policy_loss.data, self.episode_number+1])
+            self.plot_q.append([q_loss.data, self.episode_number+1])
+        except:
+            pass
+        self.episode_number += 1
+
+
+        if result['success']:
+            print('Episode succeeded.')
+        else:
+            print('Episode failed by %s\n' % (result['failure_mode']))
+        episode = self.end_episode(result)
+        print(episode_reward)
+        return episode, episode_reward
+
+
+
+    def update(self):
+        s_batch, a_batch, r_batch, t_batch, s2_batch = self.memory.sample(self.batch_size)
+        s_batch = torch.FloatTensor(s_batch).to(self.device)
+        a_batch = torch.FloatTensor(a_batch).to(self.device)
+        r_batch = torch.FloatTensor(r_batch).unsqueeze(1).to(self.device)
+        t_batch = torch.FloatTensor(np.float32(t_batch)).unsqueeze(1).to(self.device)
+        s2_batch = torch.FloatTensor(s2_batch).to(self.device)
+
+
+        #compute loss for critic
+        a2_batch = self.target_actor(s2_batch)
+        target_q = self.target_critic(s2_batch, a2_batch) #detach to avoid updating target
+        y = r_batch + (1.0 - t_batch) * self.gamma * target_q.detach()
+        q = self.critic(s_batch, a_batch)
+
+        self.q_optimizer.zero_grad()
+        MSE = nn.MSELoss()
+        q_loss = MSE(q, y) #detach to avoid updating target
+        q_loss.backward()
+        self.q_optimizer.step()
+
+        #compute loss for actor
+        self.policy_optimizer.zero_grad()
+        policy_loss = -self.critic(s_batch, self.actor(s_batch))
+        policy_loss = policy_loss.mean()
+        policy_loss.backward()
+        self.policy_optimizer.step()
+
+        #soft update of the frozen target networks
+        for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
+            target_param.data.copy_(
+                target_param.data * (1.0 - self.tau) + param.data * self.tau
+            )
+
+        for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
+            target_param.data.copy_(
+                target_param.data * (1.0 - self.tau) + param.data * self.tau
+            )
+        return policy_loss, q_loss
 
     def get_action(self, state, step):
         action_normalised = self.agent.get_action(np.array(state))
@@ -413,10 +545,20 @@ class DDPGController(Controller):
         confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
         return confidence, sigma
 
+    def to_state(self, state):
+        state_k = (self.state_high - self.state_low)/ 2.
+        state_b = (self.state_high + self.state_low)/ 2.
+        return state_k * state + state_b
+
     def to_action(self, action):
         act_k = (self.action_space_high - self.action_space_low)/ 2.
         act_b = (self.action_space_high + self.action_space_low)/ 2.
         return act_k * action + act_b
+
+    def to_normalised_state(self, state):
+        state_k_inv = 2./(self.state_high - self.state_low)
+        state_b = (self.state_high + self.state_low)/ 2.
+        return state_k_inv * (state - state_b)
 
     def to_normalised_action(self, action):
         act_k_inv = 2./(self.action_space_high - self.action_space_low)

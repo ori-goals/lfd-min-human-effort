@@ -3,6 +3,24 @@ from learn_to_manipulate.simulate import Simulation
 import matplotlib.pyplot as plt
 import rospy
 
+def subplot(contr):
+    r = list(zip(*contr.plot_reward))
+    p = list(zip(*contr.plot_policy))
+    q = list(zip(*contr.plot_q))
+    s = list(zip(*contr.plot_steps))
+
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(15,15))
+
+    ax[0, 0].plot(list(r[1]), list(r[0]), 'r') #row=0, col=0
+    ax[1, 0].plot(list(p[1]), list(p[0]), 'b') #row=1, col=0
+    ax[0, 1].plot(list(q[1]), list(q[0]), 'g') #row=0, col=1
+    ax[1, 1].plot(list(s[1]), list(s[0]), 'k') #row=1, col=1
+    ax[0, 0].title.set_text('Reward')
+    ax[1, 0].title.set_text('Policy loss')
+    ax[0, 1].title.set_text('Q loss')
+    ax[1, 1].title.set_text('Max steps')
+    plt.savefig('run.png')
+
 
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate', log_level=rospy.ERROR)
@@ -15,17 +33,7 @@ if __name__ == "__main__" :
     results = []
     for i in range(400):
         episode, dense_reward = sim.run_new_episode(case_name, 5, controller_type = 'ddpg')
-        dense_rewards.append(dense_reward)
-        if episode.result:
-            results.append(1)
-        else:
-            results.append(0)
-        print(i)
-        if i % 20 == 0:
 
-            plt.figure()
-            plt.plot(range(len(dense_rewards)), dense_rewards)
-            plt.savefig('rewards.png')
-            plt.figure()
-            plt.plot(range(len(dense_rewards)), results, 'kx')
-            plt.savefig('success.png')
+        print(i)
+        if (i-3) % 10 == 0:    # print every print_every episodes
+            subplot(sim.controllers[0])

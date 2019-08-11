@@ -11,85 +11,57 @@ def qv_rotate(q1, v1):
         tf.transformations.quaternion_multiply(q1, q2),
         tf.transformations.quaternion_conjugate(q1))[0:3]
 
-# Ornstein-Ulhenbeck Process
-# Taken from #https://github.com/vitchyr/rlkit/blob/master/rlkit/exploration_strategies/ou_strategy.py
-class OUNoise(object):
-    def __init__(self, action_space, mu=0.0, theta=0.15, max_sigma=0.3, min_sigma=0.3, decay_period=100000):
-        self.mu           = mu
-        self.theta        = theta
-        self.sigma        = max_sigma
-        self.max_sigma    = max_sigma
-        self.min_sigma    = min_sigma
-        self.decay_period = decay_period
-        self.action_dim   = action_space.shape[0]
-        self.low          = action_space.low
-        self.high         = action_space.high
+class OrnsteinUhlenbeckActionNoise:
+    def __init__(self, mu=0, sigma=0.2, theta=.15, dt=1e-2, x0=None):
+        self.theta = theta
+        self.mu = mu
+        self.sigma = sigma
+        self.dt = dt
+        self.x0 = x0
         self.reset()
 
+    def __call__(self):
+        x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt + self.sigma * np.sqrt(self.dt) * np.random.normal(size=self.mu.shape)
+        self.x_prev = x
+        return x
+
     def reset(self):
-        self.state = np.ones(self.action_dim) * self.mu
+        self.x_prev = self.x0 if self.x0 is not None else np.zeros_like(self.mu)
 
-    def evolve_state(self):
-        x  = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(self.action_dim)
-        self.state = x + dx
-        return self.state
+    def __repr__(self):
+        return 'OrnsteinUhlenbeckActionNoise(mu={}, sigma={})'.format(self.mu, self.sigma)
 
-    def get_action(self, action, t=0):
-        ou_state = self.evolve_state()
-        self.sigma = self.max_sigma - (self.max_sigma - self.min_sigma) * min(1.0, t / self.decay_period)
-        return np.clip(action + ou_state, self.low, self.high)
+class ReplayBuffer(object):
+    def __init__(self, buffer_size, name_buffer=''):
+        self.buffer_size=buffer_size  #choose buffer size
+        self.num_exp=0
+        self.buffer=deque()
 
+    def add(self, s, a, r, t, s2):
+        experience=(s, a, r, t, s2)
+        if self.num_exp < self.buffer_size:
+            self.buffer.append(experience)
+            self.num_exp +=1
+        else:
+            self.buffer.popleft()
+            self.buffer.append(experience)
 
-class BasicBuffer(object):
+    def size(self):
+        return self.buffer_size
 
-    def __init__(self, max_size):
-        self.max_size = max_size
-        self.buffer = deque(maxlen=max_size)
-
-    def push(self, state, action, reward, next_state, done):
-        experience = (state, action, np.array([reward]), next_state, done)
-        self.buffer.append(experience)
+    def count(self):
+        return self.num_exp
 
     def sample(self, batch_size):
-        state_batch = []
-        action_batch = []
-        reward_batch = []
-        next_state_batch = []
-        done_batch = []
+        if self.num_exp < batch_size:
+            batch=random.sample(self.buffer, self.num_exp)
+        else:
+            batch=random.sample(self.buffer, batch_size)
 
-        batch = random.sample(self.buffer, batch_size)
+        s, a, r, t, s2 = map(np.stack, zip(*batch))
 
-        for experience in batch:
-            state, action, reward, next_state, done = experience
-            state_batch.append(state)
-            action_batch.append(action)
-            reward_batch.append(reward)
-            next_state_batch.append(next_state)
-            done_batch.append(done)
+        return s, a, r, t, s2
 
-        return (state_batch, action_batch, reward_batch, next_state_batch, done_batch)
-
-    def sample_sequence(self, batch_size):
-        state_batch = []
-        action_batch = []
-        reward_batch = []
-        next_state_batch = []
-        done_batch = []
-
-        min_start = len(self.buffer) - batch_size
-        start = np.random.randint(0, min_start)
-
-        for sample in range(start, start + batch_size):
-            state, action, reward, next_state, done = self.buffer[start]
-            state, action, reward, next_state, done = experience
-            state_batch.append(state)
-            action_batch.append(action)
-            reward_batch.append(reward)
-            next_state_batch.append(next_state)
-            done_batch.append(done)
-
-        return (state_batch, action_batch, reward_batch, next_state_batch, done_batch)
-
-    def __len__(self):
-        return len(self.buffer)
+    def clear(self):
+        self.buffer = deque()
+        self.num_exp=0
