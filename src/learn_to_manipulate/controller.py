@@ -417,12 +417,13 @@ class DDPGController(Controller):
         for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
             target_param.data.copy_(param.data)
 
-        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.005)#, weight_decay=0.01)
+        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.001)#, weight_decay=0.01)
         self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=0.0001)
 
 
         self.memory = ReplayBuffer(50000)
         self.plot_reward = []
+        self.plot_average_rewards = []
         self.plot_policy = []
         self.plot_q = []
         self.plot_steps = []
@@ -430,7 +431,7 @@ class DDPGController(Controller):
         self.epsilon_decay = 1e-6
         self.buffer_start = 200
         self.batch_size = 128
-        self.tau = 0.01
+        self.tau = 0.001
         self.gamma = 0.99
         self.episode_number = 0
 
@@ -471,6 +472,13 @@ class DDPGController(Controller):
 
         self.plot_reward.append([episode_reward, self.episode_number+1])
         self.plot_steps.append([step+1, self.episode_number+1])
+
+        window = 10
+        if len(self.plot_reward) > window:
+            sum = 0.0
+            for entry in self.plot_reward[-window:]:
+                sum += entry[0]
+            self.plot_average_rewards.append([sum/window, self.episode_number+1])
         try:
             self.plot_policy.append([policy_loss.data, self.episode_number+1])
             self.plot_q.append([q_loss.data, self.episode_number+1])
