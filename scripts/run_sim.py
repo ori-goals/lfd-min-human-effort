@@ -30,7 +30,7 @@ if __name__ == "__main__" :
     #saved_controller_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/similar_cases_teleop.pkl'
     sim.add_controllers({'ddpg':{}})
 
-    case_name = 'harder_rl_attempt_aug11'
+    case_name = 'rl_attempt_aug11'
     dense_rewards = []
     results = []
     for i in range(2000):

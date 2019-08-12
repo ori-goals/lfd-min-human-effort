@@ -202,7 +202,7 @@ class Controller(object):
         block_angle = np.arccos(block_pose.orientation.w)*2
         if block_pose.orientation.z < 0:
             block_angle *= -1.
-        return np.array([0.0, 0.0, block_angle, xdiff, ydiff])
+        return np.array([blockx, blocky, block_angle, self.current_pose['x'], self.current_pose['y']])
 
     def execute_action(self, action, step):
         rospy.wait_for_service('/gazebo/get_model_state')
@@ -250,7 +250,6 @@ class Controller(object):
         if result['success']:
             reward += 1.0
         return reward
-
 
     def go_to_pose(self, pose):
         pose_goal = geometry_msgs.msg.Pose()
