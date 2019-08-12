@@ -36,7 +36,7 @@ class Controller(object):
         self.num_states = 52
         self.num_actions = 2
         self.pose_limits = {'min_x':0.25, 'max_x':0.75, 'min_y':-0.25, 'max_y':0.25}
-        self.episode_count = 0
+        self.episode_number = 0
         self.init_pose = {'x':0.29, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
 
@@ -44,97 +44,65 @@ class Controller(object):
     def from_save_info(cls, sim, save_info):
         controller = cls(sim)
         controller.config = save_info['config']
-        controller.exp = save_info['exp']
+        controller.experience = save_info['experience']
         return controller
 
 
     def get_save_info(self):
-        return {'type':self.type, 'exp':self.exp, 'config':self.config}
+        return {'type':self.type, 'experience':self.experience, 'config':self.config}
 
     def set_arm_initial(self):
-        qxs = [-1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, self.init_pose['qx']]
-        qys = [0.0, 0.0, 0.0, 0.0, 0.0, 0.6697, 0.6697, self.init_pose['qy']]
-        qzs = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, self.init_pose['qz']]
-        qws = [0.0, 0.0, 0.0, 0.0, 0.0, 0.7426, 0.7426, self.init_pose['qw']]
-        xs = [0.816, 0.70, 0.7, 0.7, 0.7, 0.77, 0.77, self.init_pose['x']]
-        ys = [0.191, 0.20, 0.199, 0.2, 0.2, 0.2, 0.0, self.init_pose['y']]
-        zs = [0.0, 0.12, 0.253, 0.35, 0.35, 0.35, 0.37, self.init_pose['z']]
-        current_pose = self.group.get_current_pose().pose
-        if current_pose.position.z > 0.3:
-            start_ind = len(qxs) - 1
-        else:
-            start_ind = 0
-
-        for ind in range(start_ind, len(qxs)):
-            pose_goal = geometry_msgs.msg.Pose()
-            pose_goal.orientation.x = qxs[ind]
-            pose_goal.orientation.y = qys[ind]
-            pose_goal.orientation.z = qzs[ind]
-            pose_goal.orientation.w = qws[ind]
-            pose_goal.position.x = xs[ind]
-            pose_goal.position.y = ys[ind]
-            pose_goal.position.z = zs[ind]
-            if ind < len(qxs) - 1:
-                self.group.set_pose_target(pose_goal)
-                plan = self.group.go(wait=True)
-                self.group.stop()
-                self.group.clear_pose_targets()
-            else:
-                self.go_to_pose(self.init_pose)
-        rospy.sleep(1.0)
+        move_arm_initial(self)
 
     def run_episode(self, case_name, case_number):
+        print("Starting new episode with controller type: %s" % (self.type))
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
-
         episode_running = True
         episode_reward = 0.0
         step = 0
+        if self.type == 'ddpg':
+            self.noise.reset()
+
         while episode_running:
             state = self.get_state()
             action = self.get_action(state, step)
-            if abs(action['x']) < 0.0001 and abs(action['y']) < 0.0001:
+            if abs(action[0]) < 0.001 and abs(action[1]) < 0.001:
                 rospy.sleep(0.1)
-
+                continue
             new_state, reward, result, episode_running = self.execute_action(action, step)
-            self.add_to_memory(state, action, reward, new_state, result)
-
+            self.add_to_memory(state, action, reward, new_state, result, episode_running)
             episode_reward += reward
             step += 1
 
-        if result['success']:
-            print('Episode succeeded.')
-        else:
-            print('Episode failed by %s\n' % (result['failure_mode']))
-        episode = self.end_episode(result)
-        print(episode_reward)
+        self.add_plotting_data(episode_reward, step)
+        self.episode_number += 1
+        episode = self.end_episode(result, episode_reward)
         return episode, episode_reward
 
-    def add_to_memory(self, state, action, reward, new_state, result):
-        self.exp.add_step(state, action)
+
+    def add_to_memory(self, state, action, reward, new_state, result, episode_running):
+        self.experience.add_step(state, action)
 
     def begin_new_episode(self, case_name, case_number):
+        confidence, sigma = self.get_controller_confidence()
+        self.experience.new_episode(confidence, sigma, case_name, case_number)
 
-        if self.type == 'ddpg':
-            pass
-        else:
-            confidence, sigma = self.get_controller_confidence()
-            self.exp.new_episode(confidence, sigma, case_name, case_number)
-
-    def end_episode(self, result):
-        self.episode_count += 1
-        if self.type == 'ddpg':
-            episode = 5
-        else:
-            episode = self.exp.end_episode(result)
-            episode_length = len(self.exp.episode_df)
-        #self.update_learnt_controller(episode.result, episode_length)
+    def end_episode(self, result, episode_reward):
+        self.episode_number += 1
+        episode = self.experience.end_episode(result)
+        episode_length = len(self.experience.episode_df)
+        self.print_result(result, episode_reward)
         return episode
 
+    def print_result(self, result, dense_reward):
+        if result['success']:
+            print('Episode succeeded. The dense reward was %.4f\n' % (dense_reward))
+        else:
+            print('Episode failed by %s. The dense reward was %.4f\n' % (result['failure_mode'], dense_reward))
+
     def check_episode_status(self, step):
-
         episode_running = True
-
         rospy.wait_for_service('/gazebo/get_model_state')
         get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
         block_pose = get_model_state_prox('block','').pose
@@ -184,6 +152,9 @@ class Controller(object):
         else:
             return False
 
+    def add_plotting_data(self, episode_reward, step):
+        pass
+
     def store_laser(self, data):
         scan = np.array(data.ranges)
         range_max = 1.0
@@ -210,8 +181,8 @@ class Controller(object):
         old_block_pose = get_model_state_prox('block','').pose
 
         old_arm_pose = copy.copy(self.current_pose)
-        self.current_pose['x'] += action['x']
-        self.current_pose['y'] += action['y']
+        self.current_pose['x'] += action[0]
+        self.current_pose['y'] += action[1]
         if self.current_pose['x'] > self.pose_limits['max_x']:
             self.current_pose['x'] = self.pose_limits['max_x']
         if self.current_pose['x'] < self.pose_limits['min_x']:
@@ -264,13 +235,17 @@ class Controller(object):
         plan, fraction = self.group.compute_cartesian_path(waypoints,  0.005, 0.0)
         self.group.execute(plan, wait=True)
 
+    def get_controller_confidence(self):
+        confidence, sigma, _, _ = self.experience.get_state_value(self.get_state())
+        return confidence, sigma
+
 
 class TeleopController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.config = DemoConfig(bc_learning_rates = [0.0001, 0.0001],
                                 bc_steps_per_frame = 10, td_max = 0.5)
-        self.exp = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 2.0)
+        self.experience = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 2.0)
 
     def get_controller_confidence(self):
         return 1.0, 0.0
@@ -289,7 +264,7 @@ class TeleopController(Controller):
                 break
 
         if learnt_controller_exists:
-            learnt_controller.policy.bc_update(self.exp, self.config, episode_length)
+            learnt_controller.policy.bc_update(self.experience, self.config, episode_length)
 
 class SavedTeleopController(TeleopController):
     def __init__(self, sim, file, type):
@@ -303,7 +278,7 @@ class SavedTeleopController(TeleopController):
         controller_found = False
         for save_info in controller_save_info:
             if save_info['type'] == type:
-                experience = save_info['exp']
+                experience = save_info['experience']
                 controller_found = True
 
         if not controller_found:
@@ -331,10 +306,9 @@ class SavedTeleopController(TeleopController):
         return episode
 
     def end_episode(self, episode):
-        self.episode_count += 1
-        self.exp.add_saved_episode(episode)
+        self.episode_number += 1
+        self.experience.add_saved_episode(episode)
         episode_length = len(episode.episode_df)
-        self.update_learnt_controller(episode.result, episode_length)
 
 class KeypadController(TeleopController):
     def __init__(self, sim):
@@ -349,22 +323,22 @@ class KeypadController(TeleopController):
     def get_action(self, state, step):
         dx = self.time_step*self.key_vel.linear.x
         dy = self.time_step*self.key_vel.angular.z
-        return {'x':dx, 'y':dy}
+        return [dx, dy]
 
 class JoystickController(TeleopController):
     def __init__(self, sim):
         TeleopController.__init__(self, sim)
         self.type = 'joystick_teleop'
-        rospy.Subscriber("gamepad_vel", Twist, self.store_key_vel)
-        self.key_vel = Twist()
+        rospy.Subscriber("gamepad_vel", Twist, self.store_gamepad_vel)
+        self.gamepad_vel = Twist()
 
-    def store_key_vel(self, data):
-        self.key_vel = data
+    def store_gamepad_vel(self, data):
+        self.gamepad_vel = data
 
     def get_action(self, state, step):
-        dx = self.time_step*self.key_vel.linear.x
-        dy = self.time_step*self.key_vel.angular.z
-        return {'x':dx, 'y':dy}
+        dx = self.time_step*self.gamepad_vel.linear.x
+        dy = self.time_step*self.gamepad_vel.angular.z
+        return  [dx, dy]
 
 class LearntController(Controller):
 
@@ -374,32 +348,26 @@ class LearntController(Controller):
         nominal_means = np.array([0.02, 0.0])
         nominal_sigma_exps = np.array([-5.5, -5.5])
         self.policy = ActorNN(nominal_means, nominal_sigma_exps)
-        self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
+        self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
         self.config = LearntConfig(rl_buffer_frames_min = 500000, ac_learning_rates = [0.00001, 0.00001],
                                 rl_steps_per_frame = 5, td_max = 0.5)
 
-
-
-    def get_controller_confidence(self):
-        confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
-        return confidence, sigma
-
     def get_action(self, state, step):
         action = self.policy.get_action(state)
-        return {'x':action[0], 'y':action[1]}
+        return action
 
     def update_learnt_controller(self, result, episode_length):
-        if len(self.exp.replay_buffer) > self.config.rl_buffer_frames_min:
-            self.policy.ac_update(self.exp, self.config, episode_length)
+        if len(self.experience.replay_buffer) > self.config.rl_buffer_frames_min:
+            self.policy.ac_update(self.experience, self.config, episode_length)
 
     def get_save_info(self):
-        return {'type':self.type, 'exp':self.exp, 'config':self.config, 'policy':self.policy}
+        return {'type':self.type, 'experience':self.experience, 'config':self.config, 'policy':self.policy}
 
     @classmethod
     def from_save_info(cls, sim, save_info):
         controller = cls(sim)
         controller.config = save_info['config']
-        controller.exp = save_info['exp']
+        controller.experience = save_info['experience']
         controller.policy = save_info['policy']
         return controller
 
@@ -408,7 +376,7 @@ class DDPGController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.type = 'ddpg'
-        self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
+        self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
         self.action_space_high = np.array([0.05, 0.03])
         self.action_space_low = np.array([-0.03, -0.03])
         laser_low = np.zeros(30)
@@ -434,86 +402,49 @@ class DDPGController(Controller):
 
         self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.001)#, weight_decay=0.01)
         self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=0.0001)
-
-
-        self.memory = ReplayBuffer(50000)
+        self.replay_buffer = ReplayBuffer(50000)
         self.plot_reward = []
         self.plot_average_rewards = []
         self.plot_policy = []
         self.plot_q = []
         self.plot_steps = []
-        self.epsilon = 1
-        self.epsilon_decay = 1e-6
-        self.buffer_start = 200
+        self.buffer_start = 128
         self.batch_size = 64
         self.tau = 0.001
         self.gamma = 0.99
         self.episode_number = 0
+        self.noise_factor = 0.5
 
     def get_controller_confidence(self):
         return 1.0, 0.0
 
-
-    def run_episode(self, case_name, case_number):
-        print("Starting new episode with controller type: %s" % (self.type))
-        self.current_pose = copy.copy(self.init_pose)
-        self.begin_new_episode(case_name, case_number)
-        episode_running = True
-        ep_q_value = 0.
-        episode_reward = 0.0
-        step = 0
-        self.noise.reset()
-        while episode_running:
-            self.epsilon -= self.epsilon_decay
-            state = self.get_state()
-            state_norm = self.to_normalised_state(state)
-            action_norm = self.actor.get_action(state_norm)
-            action_norm += self.noise()*max(0, self.epsilon)*0.5
-            action_norm = np.clip(action_norm, -1., 1.)
-
-            action = self.to_action(action_norm)
-
-            new_state, reward, result, episode_running = self.execute_action({'x':action[0], 'y':action[1]}, step)
-            new_state_norm = self.to_normalised_state(new_state)
-            terminal = not episode_running
-            if step == 0:
-                print(action)
-            self.memory.add(state_norm, action_norm, reward, terminal, new_state_norm)
-            if self.memory.count() > self.buffer_start:
-                policy_loss, q_loss = self.update()
-            episode_reward += reward
-            step += 1
-
-
+    def add_plotting_data(self, episode_reward, step):
         self.plot_reward.append([episode_reward, self.episode_number+1])
         self.plot_steps.append([step+1, self.episode_number+1])
-
         window = 10
+        sum = 0.0
         if len(self.plot_reward) > window:
-            sum = 0.0
             for entry in self.plot_reward[-window:]:
                 sum += entry[0]
             self.plot_average_rewards.append([sum/window, self.episode_number+1])
         try:
-            self.plot_policy.append([policy_loss.data, self.episode_number+1])
-            self.plot_q.append([q_loss.data, self.episode_number+1])
+            self.plot_policy.append([self.policy_loss.data, self.episode_number+1])
+            self.plot_q.append([self.q_loss.data, self.episode_number+1])
         except:
             pass
-        self.episode_number += 1
 
-
-        if result['success']:
-            print('Episode succeeded.')
-        else:
-            print('Episode failed by %s\n' % (result['failure_mode']))
-        episode = self.end_episode(result)
-        print(episode_reward)
-        return episode, episode_reward
-
-
+    def add_to_memory(self, state, action, reward, new_state, result, episode_running):
+        new_state_norm = self.to_normalised_state(new_state)
+        state_norm = self.to_normalised_state(state)
+        action_norm = self.to_normalised_action(action)
+        terminal = not episode_running
+        self.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
+        if self.replay_buffer.count() > self.buffer_start:
+            self.policy_loss, self.q_loss = self.update()
+        self.experience.add_step(state, action)
 
     def update(self):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = self.memory.sample(self.batch_size)
+        s_batch, a_batch, r_batch, t_batch, s2_batch = self.replay_buffer.sample(self.batch_size)
         s_batch = torch.FloatTensor(s_batch).to(self.device)
         a_batch = torch.FloatTensor(a_batch).to(self.device)
         r_batch = torch.FloatTensor(r_batch).unsqueeze(1).to(self.device)
@@ -553,16 +484,12 @@ class DDPGController(Controller):
         return policy_loss, q_loss
 
     def get_action(self, state, step):
-        action_normalised = self.agent.get_action(np.array(state))
-        action = self.to_action(action_normalised)
-        if step == 0:
-            print(action)
-        action = self.noise.get_action(action, step)
-        return {'x':action[0], 'y':action[1]}
-
-    def get_controller_confidence(self):
-        confidence, sigma, _, _ = self.exp.get_state_value(self.get_state())
-        return confidence, sigma
+        state_norm = self.to_normalised_state(state)
+        action_norm = self.actor.get_action(state_norm)
+        action_norm += self.noise()*self.noise_factor
+        action_norm = np.clip(action_norm, -1., 1.)
+        action = self.to_action(action_norm)
+        return action
 
     def to_state(self, state):
         state_k = (self.state_high - self.state_low)/ 2.
@@ -583,13 +510,6 @@ class DDPGController(Controller):
         act_k_inv = 2./(self.action_space_high - self.action_space_low)
         act_b = (self.action_space_high + self.action_space_low)/ 2.
         return act_k_inv * (action - act_b)
-
-    def add_to_memory(self, state, action, reward, new_state, result):
-        self.exp.add_step(state, action)
-        action_normalised = self.to_normalised_action(np.array([action['x'], action['y']]))
-        self.agent.memory.push(state, action_normalised, reward, new_state, result['success'])
-        if len(self.agent.memory) > self.batch_size:
-            self.agent.update(self.batch_size)
 
 class DDPGConfig:
     def __init__(self):

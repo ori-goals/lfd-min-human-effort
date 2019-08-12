@@ -28,7 +28,7 @@ if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate', log_level=rospy.ERROR)
     sim = Simulation()
     #saved_controller_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/similar_cases_teleop.pkl'
-    sim.add_controllers({'ddpg':{}})
+    sim.add_controllers({'ddpg':{}, 'joystick_teleop':{}})
 
     case_name = 'harder_rl_attempt_aug11'
     dense_rewards = []

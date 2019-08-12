@@ -37,7 +37,7 @@ class Experience(object):
         self.episode_case_name = case_name
 
     def add_step(self, state, action):
-        self.episode_df.loc[len(self.episode_df)] = [state, action['x'], action['y'], -1.0, -1.0]
+        self.episode_df.loc[len(self.episode_df)] = [state, action[0], action[1], -1.0, -1.0]
 
     def end_episode(self, result):
         self.store_episode_result(result['success'])

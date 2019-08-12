@@ -50,8 +50,10 @@ class Simulation(object):
                 controller_list.append(LearntController.from_save_info(sim, save_info))
             elif save_info['type'] == 'keypad_teleop':
                 controller_list.append(KeypadController.from_save_info(sim, save_info))
+            elif save_info['type'] == 'joystick_teleop':
+                controller_list.append(JoystickController.from_save_info(sim, save_info))
             elif save_info['type'] == 'saved_teleop':
-                pass
+                controller_list.append(SavedTeleopController(file_path, save_info['type']))
         sim.controllers = controller_list
         return sim
 
@@ -94,6 +96,8 @@ class Simulation(object):
                 controller_list.append(LearntController(self))
             elif type == 'keypad_teleop':
                 controller_list.append(KeypadController(self))
+            elif type == 'joystick_teleop':
+                controller_list.append(JoystickController(self))
             elif type == 'ddpg':
                 controller_list.append(DDPGController(self))
             elif type == 'saved_teleop':

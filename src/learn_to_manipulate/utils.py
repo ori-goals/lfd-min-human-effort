@@ -3,6 +3,8 @@ import tf
 import numpy as np
 from collections import deque
 import random
+import geometry_msgs
+import rospy
 
 def qv_rotate(q1, v1):
     q2 = list(v1)
@@ -10,6 +12,38 @@ def qv_rotate(q1, v1):
     return tf.transformations.quaternion_multiply(
         tf.transformations.quaternion_multiply(q1, q2),
         tf.transformations.quaternion_conjugate(q1))[0:3]
+
+def move_arm_initial(contr):
+    qxs = [-1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, contr.init_pose['qx']]
+    qys = [0.0, 0.0, 0.0, 0.0, 0.0, 0.6697, 0.6697, contr.init_pose['qy']]
+    qzs = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, contr.init_pose['qz']]
+    qws = [0.0, 0.0, 0.0, 0.0, 0.0, 0.7426, 0.7426, contr.init_pose['qw']]
+    xs = [0.816, 0.70, 0.7, 0.7, 0.7, 0.77, 0.77, contr.init_pose['x']]
+    ys = [0.191, 0.20, 0.199, 0.2, 0.2, 0.2, 0.0, contr.init_pose['y']]
+    zs = [0.0, 0.12, 0.253, 0.35, 0.35, 0.35, 0.37, contr.init_pose['z']]
+    current_pose = contr.group.get_current_pose().pose
+    if current_pose.position.z > 0.3:
+        start_ind = len(qxs) - 1
+    else:
+        start_ind = 0
+
+    for ind in range(start_ind, len(qxs)):
+        pose_goal = geometry_msgs.msg.Pose()
+        pose_goal.orientation.x = qxs[ind]
+        pose_goal.orientation.y = qys[ind]
+        pose_goal.orientation.z = qzs[ind]
+        pose_goal.orientation.w = qws[ind]
+        pose_goal.position.x = xs[ind]
+        pose_goal.position.y = ys[ind]
+        pose_goal.position.z = zs[ind]
+        if ind < len(qxs) - 1:
+            contr.group.set_pose_target(pose_goal)
+            plan = self.group.go(wait=True)
+            contr.group.stop()
+            contr.group.clear_pose_targets()
+        else:
+            contr.go_to_pose(contr.init_pose)
+    rospy.sleep(1.0)
 
 class OrnsteinUhlenbeckActionNoise:
     def __init__(self, mu=0, sigma=0.2, theta=.15, dt=1e-2, x0=None):
