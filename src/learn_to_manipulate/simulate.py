@@ -28,7 +28,7 @@ class Simulation(object):
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
         self.delete_block()
-        self.controllers[0].set_arm_initial()
+        self.controllers[list(self.controllers.keys())[0]].set_arm_initial()
         self.spawn_table()
         self.spawn_block(case_name, case_number)
         controller = self.choose_controller(switching_method, controller_type)
@@ -44,16 +44,16 @@ class Simulation(object):
         all_runs, controller_save_info = pickle.load(file)
         sim.all_runs = all_runs
 
-        controller_list = []
+        controller_list = {}
         for save_info in controller_save_info:
             if save_info['type'] == 'learnt':
-                controller_list.append(LearntController.from_save_info(sim, save_info))
+                controller_list[save_info['type']] = LearntController.from_save_info(sim, save_info)
             elif save_info['type'] == 'keypad_teleop':
-                controller_list.append(KeypadController.from_save_info(sim, save_info))
+                controller_list[save_info['type']] = KeypadController.from_save_info(sim, save_info)
             elif save_info['type'] == 'joystick_teleop':
-                controller_list.append(JoystickController.from_save_info(sim, save_info))
+                controller_list[save_info['type']] = JoystickController.from_save_info(sim, save_info)
             elif save_info['type'] == 'saved_teleop':
-                controller_list.append(SavedTeleopController(file_path, save_info['type']))
+                controller_list[save_info['type']] = SavedTeleopController(file_path, save_info['type'])
         sim.controllers = controller_list
         return sim
 
@@ -77,12 +77,12 @@ class Simulation(object):
 
     def save_simulation(self, folder):
         fname = time.strftime("%Y-%m-%d-%H-%M")
-        for contr in self.controllers:
+        for type, controller in self.controllers.items():
             fname += '_' + contr.type + str(contr.episode_count)
         new_file_path = folder + '/' + fname + '.pkl'
 
         controller_save_info = []
-        for contr in self.controllers:
+        for type, contr in self.controllers.items():
             controller_save_info.append(contr.get_save_info())
 
         with open(new_file_path, 'w') as f:
@@ -90,34 +90,34 @@ class Simulation(object):
             f.close
 
     def add_controllers(self, type_dict):
-        controller_list = []
+        controller_dict = {}
         for type in type_dict:
             if type == 'learnt':
-                controller_list.append(LearntController(self))
+                controller_dict[type] = LearntController(self)
             elif type == 'keypad_teleop':
-                controller_list.append(KeypadController(self))
+                controller_dict[type] = KeypadController(self)
             elif type == 'joystick_teleop':
-                controller_list.append(JoystickController(self))
+                controller_dict[type] = JoystickController(self)
             elif type == 'ddpg':
-                controller_list.append(DDPGController(self))
+                controller_dict[type] = DDPGController(self)
             elif type == 'saved_teleop':
                 mydict = type_dict[type]
-                controller_list.append(SavedTeleopController(self, mydict['file'], mydict['type']))
-        self.controllers = controller_list
+                controller_dict[mydict['type']] = SavedTeleopController(self, mydict['file'], mydict['type'])
+        self.controllers = controller_dict
 
 
     def choose_controller(self, switching_method = None, requested_type = None):
 
         # if a controller type has been specified
         if requested_type is not None:
-            for controller in self.controllers:
+            for type, controller in self.controllers.items():
                 if controller.type == requested_type:
                     return controller
             sys.exit('Error: requested controller does not exist')
 
         if switching_method == 'contextual_bandit':
             max_ucb = 0.0
-            for controller in self.controllers:
+            for type, controller in self.controllers.items():
                 confidence, sigma = controller.get_controller_confidence()
                 ucb = (confidence + self.alpha*sigma)*self.success_reward
                 if 'teleop' in controller.type:

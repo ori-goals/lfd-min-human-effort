@@ -30,7 +30,7 @@ class Controller(object):
         moveit_commander.roscpp_initialize(sys.argv)
         self.robot = moveit_commander.RobotCommander()
         self.group = moveit_commander.MoveGroupCommander("manipulator")
-        self.steps_max = 60
+        self.steps_max = 50
         self.time_step = 0.05
         self.sim = sim
         self.num_states = 52
@@ -257,7 +257,7 @@ class TeleopController(Controller):
             return
 
         learnt_controller_exists = False
-        for controller in self.sim.controllers:
+        for type, controller in self.sim.controllers.items():
             if controller.type == 'learnt':
                 learnt_controller = controller
                 learnt_controller_exists =  True
