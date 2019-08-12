@@ -76,7 +76,6 @@ class Controller(object):
             step += 1
 
         self.add_plotting_data(episode_reward, step)
-        self.episode_number += 1
         episode = self.end_episode(result, episode_reward)
         return episode, episode_reward
 
@@ -90,7 +89,7 @@ class Controller(object):
 
     def end_episode(self, result, episode_reward):
         self.episode_number += 1
-        episode = self.experience.end_episode(result)
+        episode = self.experience.end_episode(result, self.type)
         episode_length = len(self.experience.episode_df)
         self.print_result(result, episode_reward)
         return episode
@@ -379,6 +378,7 @@ class DDPGController(Controller):
         self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
         self.action_space_high = np.array([0.05, 0.03])
         self.action_space_low = np.array([-0.03, -0.03])
+        self.config = DDPGConfig()
         laser_low = np.zeros(30)
         laser_high = np.ones(30)*1.
         self.state_high = np.concatenate((laser_high, np.array([1.0, 0.3])))

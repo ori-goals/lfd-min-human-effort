@@ -28,7 +28,7 @@ if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate', log_level=rospy.ERROR)
     sim = Simulation()
     #saved_controller_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/similar_cases_teleop.pkl'
-    sim.add_controllers({'ddpg':{}, 'joystick_teleop':{}})
+    sim.add_controllers({'ddpg':{}})
 
     case_name = 'harder_rl_attempt_aug11'
     dense_rewards = []
@@ -39,3 +39,5 @@ if __name__ == "__main__" :
         print(i)
         if (i-14) % 15 == 0:    # print every print_every episodes
             subplot(sim.controllers['ddpg'])
+        if (i-1) % 50 == 0:
+            sim.save_simulation('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests')

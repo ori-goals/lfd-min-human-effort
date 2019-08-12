@@ -77,8 +77,8 @@ class Simulation(object):
 
     def save_simulation(self, folder):
         fname = time.strftime("%Y-%m-%d-%H-%M")
-        for type, controller in self.controllers.items():
-            fname += '_' + contr.type + str(contr.episode_count)
+        for type, contr in self.controllers.items():
+            fname += '_' + contr.type + str(contr.episode_number)
         new_file_path = folder + '/' + fname + '.pkl'
 
         controller_save_info = []

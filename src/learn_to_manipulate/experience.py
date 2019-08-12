@@ -9,7 +9,7 @@ from std_msgs.msg import Bool, Float64, Int16, String
 
 
 class Episode():
-    def __init__(self, df, confidence, sigma, result, failure_mode, case_number, case_name):
+    def __init__(self, df, controller_type, confidence, sigma, result, failure_mode, case_number, case_name):
         self.episode_df = df
         self.confidence = confidence
         self.sigma = sigma
@@ -17,6 +17,7 @@ class Episode():
         self.failure_mode = failure_mode
         self.case_number = case_number
         self.case_name = case_name
+        self.controller_type = controller_type
 
 class Experience(object):
     def __init__(self, window_size, prior_alpha, prior_beta, length_scale):
@@ -39,9 +40,9 @@ class Experience(object):
     def add_step(self, state, action):
         self.episode_df.loc[len(self.episode_df)] = [state, action[0], action[1], -1.0, -1.0]
 
-    def end_episode(self, result):
+    def end_episode(self, result, controller_type):
         self.store_episode_result(result['success'])
-        episode = Episode(df = self.episode_df, confidence = self.episode_confidence,
+        episode = Episode(df = self.episode_df, controller_type = controller_type, confidence = self.episode_confidence,
             sigma = self.episode_confidence_sigma, result = result['success'], failure_mode = result['failure_mode'],
             case_number = self.episode_case_number, case_name = self.episode_case_name)
         self.episode_list.append(episode)
