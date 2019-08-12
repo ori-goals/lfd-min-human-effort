@@ -186,7 +186,7 @@ class Controller(object):
 
     def store_laser(self, data):
         scan = np.array(data.ranges)
-        range_max = 2.0
+        range_max = 1.0
         indexes = scan > range_max
         scan[indexes] = range_max
         self.current_laser_scan = scan
@@ -202,7 +202,7 @@ class Controller(object):
         block_angle = np.arccos(block_pose.orientation.w)*2
         if block_pose.orientation.z < 0:
             block_angle *= -1.
-        return np.array([blockx, blocky, block_angle, self.current_pose['x'], self.current_pose['y']])
+        return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])
 
     def execute_action(self, action, step):
         rospy.wait_for_service('/gazebo/get_model_state')
@@ -351,6 +351,21 @@ class KeypadController(TeleopController):
         dy = self.time_step*self.key_vel.angular.z
         return {'x':dx, 'y':dy}
 
+class JoystickController(TeleopController):
+    def __init__(self, sim):
+        TeleopController.__init__(self, sim)
+        self.type = 'joystick_teleop'
+        rospy.Subscriber("gamepad_vel", Twist, self.store_key_vel)
+        self.key_vel = Twist()
+
+    def store_key_vel(self, data):
+        self.key_vel = data
+
+    def get_action(self, state, step):
+        dx = self.time_step*self.key_vel.linear.x
+        dy = self.time_step*self.key_vel.angular.z
+        return {'x':dx, 'y':dy}
+
 class LearntController(Controller):
 
     def __init__(self, sim):
@@ -396,13 +411,14 @@ class DDPGController(Controller):
         self.exp = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
         self.action_space_high = np.array([0.05, 0.03])
         self.action_space_low = np.array([-0.03, -0.03])
-
-        self.state_high = np.array([1.0, 0.3, 1.57, 1.0, 0.3])
-        self.state_low = np.array([0.0, -0.3, -1.57, 0.0, -0.3])
+        laser_low = np.zeros(30)
+        laser_high = np.ones(30)*1.
+        self.state_high = np.concatenate((laser_high, np.array([1.0, 0.3])))
+        self.state_low = np.concatenate((laser_low, np.array([0.0, -0.3])))
 
         cuda = torch.cuda.is_available() #check for CUDA
         self.device   = torch.device("cuda" if cuda else "cpu")
-        state_dim = 5
+        state_dim = 32
         action_dim = 2
         self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
         self.critic  = Critic(state_dim, action_dim).to(self.device)
@@ -429,7 +445,7 @@ class DDPGController(Controller):
         self.epsilon = 1
         self.epsilon_decay = 1e-6
         self.buffer_start = 200
-        self.batch_size = 128
+        self.batch_size = 64
         self.tau = 0.001
         self.gamma = 0.99
         self.episode_number = 0
