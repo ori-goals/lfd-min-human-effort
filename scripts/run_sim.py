@@ -2,13 +2,15 @@
 from learn_to_manipulate.simulate import Simulation
 import matplotlib.pyplot as plt
 import rospy
+import logging
+
 
 def subplot(contr):
-    r = list(zip(*contr.plot_average_rewards))
-    r2 = list(zip(*contr.plot_reward))
-    p = list(zip(*contr.plot_policy))
-    q = list(zip(*contr.plot_q))
-    s = list(zip(*contr.plot_steps))
+    r = list(zip(*contr.agent.plot_average_rewards))
+    r2 = list(zip(*contr.agent.plot_reward))
+    p = list(zip(*contr.agent.plot_policy))
+    q = list(zip(*contr.agent.plot_q))
+    s = list(zip(*contr.agent.plot_steps))
 
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(15,15))
 
@@ -25,10 +27,13 @@ def subplot(contr):
 
 
 if __name__ == "__main__" :
+
+
+
     rospy.init_node('learn_to_manipulate', log_level=rospy.ERROR)
     sim = Simulation()
     #saved_controller_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/similar_cases_teleop.pkl'
-    sim.add_controllers({'ddpg':{}})
+    sim.add_controllers({'ddpg':{}, 'joystick_teleop':{}})
 
     case_name = 'harder_rl_attempt_aug11'
     dense_rewards = []
@@ -36,8 +41,5 @@ if __name__ == "__main__" :
     for i in range(3000):
         episode, dense_reward = sim.run_new_episode(case_name, i, controller_type = 'ddpg')
 
-        print(i)
         if (i-14) % 15 == 0:    # print every print_every episodes
             subplot(sim.controllers['ddpg'])
-        if (i-1) % 50 == 0:
-            sim.save_simulation('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests')

@@ -20,7 +20,7 @@ from torch import nn
 from learn_to_manipulate.actor_nn import ActorNN
 from learn_to_manipulate.experience import Experience
 from learn_to_manipulate.utils import qv_rotate
-from learn_to_manipulate.ddpg import DDPGagent
+from learn_to_manipulate.ddpg import DDPGAgent
 from utils import *
 from matplotlib import pyplot as plt
 from learn_to_manipulate.ddpg_models import Critic, Actor
@@ -33,12 +33,19 @@ class Controller(object):
         self.steps_max = 50
         self.time_step = 0.05
         self.sim = sim
-        self.num_states = 52
+        self.num_states = 32
         self.num_actions = 2
         self.pose_limits = {'min_x':0.25, 'max_x':0.75, 'min_y':-0.25, 'max_y':0.25}
         self.episode_number = 0
         self.init_pose = {'x':0.29, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
+        self.actions_high = np.array([0.05, 0.03])
+        self.actions_low = np.array([-0.03, -0.03])
+        laser_low = np.zeros(30)
+        laser_high = np.ones(30)
+        self.states_high = np.concatenate((laser_high, np.array([1.0, 0.3])))
+        self.states_low = np.concatenate((laser_low, np.array([0.0, -0.3])))
+
 
     @classmethod
     def from_save_info(cls, sim, save_info):
@@ -62,7 +69,7 @@ class Controller(object):
         episode_reward = 0.0
         step = 0
         if self.type == 'ddpg':
-            self.noise.reset()
+            self.agent.noise.reset()
 
         while episode_running:
             state = self.get_state()
@@ -74,24 +81,30 @@ class Controller(object):
             self.add_to_memory(state, action, reward, new_state, result, episode_running)
             episode_reward += reward
             step += 1
-
-        self.add_plotting_data(episode_reward, step)
-        episode = self.end_episode(result, episode_reward)
+        episode = self.end_episode(result, episode_reward, step)
         return episode, episode_reward
 
 
     def add_to_memory(self, state, action, reward, new_state, result, episode_running):
+        new_state_norm = self.to_normalised_state(new_state)
+        state_norm = self.to_normalised_state(state)
+        action_norm = self.to_normalised_action(action)
+        terminal = not episode_running
+        self.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
+        self.update_agent()
         self.experience.add_step(state, action)
 
     def begin_new_episode(self, case_name, case_number):
         confidence, sigma = self.get_controller_confidence()
         self.experience.new_episode(confidence, sigma, case_name, case_number)
 
-    def end_episode(self, result, episode_reward):
-        self.episode_number += 1
+    def end_episode(self, result, episode_reward, step):
         episode = self.experience.end_episode(result, self.type)
         episode_length = len(self.experience.episode_df)
         self.print_result(result, episode_reward)
+        if self.type == 'ddpg':
+            self.agent.add_plotting_data(episode_reward, step, self.episode_number)
+        self.episode_number += 1
         return episode
 
     def print_result(self, result, dense_reward):
@@ -151,8 +164,6 @@ class Controller(object):
         else:
             return False
 
-    def add_plotting_data(self, episode_reward, step):
-        pass
 
     def store_laser(self, data):
         scan = np.array(data.ranges)
@@ -238,32 +249,57 @@ class Controller(object):
         confidence, sigma, _, _ = self.experience.get_state_value(self.get_state())
         return confidence, sigma
 
+    def to_state(self, state):
+        state_k = (self.states_high - self.states_low)/ 2.
+        state_b = (self.states_high + self.states_low)/ 2.
+        return state_k * state + state_b
+
+    def to_action(self, action):
+        act_k = (self.actions_high - self.actions_low)/ 2.
+        act_b = (self.actions_high + self.actions_low)/ 2.
+        return act_k * action + act_b
+
+    def to_normalised_state(self, state):
+        state_k_inv = 2./(self.states_high - self.states_low)
+        state_b = (self.states_high + self.states_low)/ 2.
+        return state_k_inv * (state - state_b)
+
+    def to_normalised_action(self, action):
+        act_k_inv = 2./(self.actions_high - self.actions_low)
+        act_b = (self.actions_high + self.actions_low)/ 2.
+        return act_k_inv * (action - act_b)
+
 
 class TeleopController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
-        self.config = DemoConfig(bc_learning_rates = [0.0001, 0.0001],
-                                bc_steps_per_frame = 10, td_max = 0.5)
+        self.config = []
         self.experience = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 2.0)
+        self.replay_buffer = ReplayBuffer(10000)
+        self.checked_for_rl = False
+        self.rl_controller = None
 
     def get_controller_confidence(self):
         return 1.0, 0.0
 
-    def update_learnt_controller(self, result, episode_length):
+    def update_agent(self):
+        if not self.checked_for_rl:
+            self.check_for_rl()
 
-        # we don't do a behaviour cloning update on unsuccessful episodes
-        if not result:
-            return
+        # if we have teleop controller with a large enough buffer we can add these updates
+        rl_buffer = None
+        if (self.rl_controller is not None):
+            if self.rl_controller.replay_buffer.count( ) > self.rl_controller.config.min_buffer_size:
+                rl_buffer = self.rl_controller.replay_buffer
 
-        learnt_controller_exists = False
-        for type, controller in self.sim.controllers.items():
-            if controller.type == 'learnt':
-                learnt_controller = controller
-                learnt_controller_exists =  True
-                break
+            if self.replay_buffer.count() > self.rl_controller.config.demo_min_buffer_size:
+                self.rl_controller.agent.update(rl_buffer, self.replay_buffer)
 
-        if learnt_controller_exists:
-            learnt_controller.policy.bc_update(self.experience, self.config, episode_length)
+    def check_for_rl(self):
+        for contr_type in self.sim.controllers.keys():
+            if 'ddpg' == contr_type:
+                self.rl_controller = self.sim.controllers[contr_type]
+
 
 class SavedTeleopController(TeleopController):
     def __init__(self, sim, file, type):
@@ -339,191 +375,59 @@ class JoystickController(TeleopController):
         dy = self.time_step*self.gamepad_vel.angular.z
         return  [dx, dy]
 
-class LearntController(Controller):
-
-    def __init__(self, sim):
-        Controller.__init__(self, sim)
-        self.type = 'learnt'
-        nominal_means = np.array([0.02, 0.0])
-        nominal_sigma_exps = np.array([-5.5, -5.5])
-        self.policy = ActorNN(nominal_means, nominal_sigma_exps)
-        self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
-        self.config = LearntConfig(rl_buffer_frames_min = 500000, ac_learning_rates = [0.00001, 0.00001],
-                                rl_steps_per_frame = 5, td_max = 0.5)
-
-    def get_action(self, state, step):
-        action = self.policy.get_action(state)
-        return action
-
-    def update_learnt_controller(self, result, episode_length):
-        if len(self.experience.replay_buffer) > self.config.rl_buffer_frames_min:
-            self.policy.ac_update(self.experience, self.config, episode_length)
-
-    def get_save_info(self):
-        return {'type':self.type, 'experience':self.experience, 'config':self.config, 'policy':self.policy}
-
-    @classmethod
-    def from_save_info(cls, sim, save_info):
-        controller = cls(sim)
-        controller.config = save_info['config']
-        controller.experience = save_info['experience']
-        controller.policy = save_info['policy']
-        return controller
-
 class DDPGController(Controller):
 
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.type = 'ddpg'
         self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
-        self.action_space_high = np.array([0.05, 0.03])
-        self.action_space_low = np.array([-0.03, -0.03])
-        self.config = DDPGConfig()
-        laser_low = np.zeros(30)
-        laser_high = np.ones(30)*1.
-        self.state_high = np.concatenate((laser_high, np.array([1.0, 0.3])))
-        self.state_low = np.concatenate((laser_low, np.array([0.0, -0.3])))
-
-        cuda = torch.cuda.is_available() #check for CUDA
-        self.device   = torch.device("cuda" if cuda else "cpu")
-        state_dim = 32
-        action_dim = 2
-        self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
-        self.critic  = Critic(state_dim, action_dim).to(self.device)
-        self.actor = Actor(state_dim, action_dim).to(self.device)
-        self.target_critic  = Critic(state_dim, action_dim).to(self.device)
-        self.target_actor = Actor(state_dim, action_dim).to(self.device)
-
-        for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
-            target_param.data.copy_(param.data)
-
-        for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
-            target_param.data.copy_(param.data)
-
-        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=0.001)#, weight_decay=0.01)
-        self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=0.0001)
-        self.replay_buffer = ReplayBuffer(50000)
-        self.plot_reward = []
-        self.plot_average_rewards = []
-        self.plot_policy = []
-        self.plot_q = []
-        self.plot_steps = []
-        self.buffer_start = 256
-        self.batch_size = 64
-        self.tau = 0.001
-        self.gamma = 0.99
-        self.episode_number = 0
-        self.noise_factor = 0.5
+        self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, rl_batch_size=64, demo_batch_size=32,
+                                min_buffer_size=256, tau=0.001, gamma=0.99, noise_factor=0.5, buffer_size=50000,
+                                demo_min_buffer_size=128)
+        self.agent = DDPGAgent(self.config, self.num_states, self.num_actions)
+        self.replay_buffer = ReplayBuffer(self.config.buffer_size)
+        self.checked_for_teleop = False
+        self.teleop_controller = None
 
     def get_controller_confidence(self):
         return 1.0, 0.0
 
-    def add_plotting_data(self, episode_reward, step):
-        self.plot_reward.append([episode_reward, self.episode_number+1])
-        self.plot_steps.append([step+1, self.episode_number+1])
-        window = 10
-        sum = 0.0
-        if len(self.plot_reward) > window:
-            for entry in self.plot_reward[-window:]:
-                sum += entry[0]
-            self.plot_average_rewards.append([sum/window, self.episode_number+1])
-        try:
-            self.plot_policy.append([self.policy_loss.data, self.episode_number+1])
-            self.plot_q.append([self.q_loss.data, self.episode_number+1])
-        except:
-            pass
-
-    def add_to_memory(self, state, action, reward, new_state, result, episode_running):
-        new_state_norm = self.to_normalised_state(new_state)
-        state_norm = self.to_normalised_state(state)
-        action_norm = self.to_normalised_action(action)
-        terminal = not episode_running
-        self.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
-        if self.replay_buffer.count() > self.buffer_start:
-            self.policy_loss, self.q_loss = self.update()
-        self.experience.add_step(state, action)
-
-    def update(self):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = self.replay_buffer.sample(self.batch_size)
-        s_batch = torch.FloatTensor(s_batch).to(self.device)
-        a_batch = torch.FloatTensor(a_batch).to(self.device)
-        r_batch = torch.FloatTensor(r_batch).unsqueeze(1).to(self.device)
-        t_batch = torch.FloatTensor(np.float32(t_batch)).unsqueeze(1).to(self.device)
-        s2_batch = torch.FloatTensor(s2_batch).to(self.device)
-
-
-        #compute loss for critic
-        a2_batch = self.target_actor(s2_batch)
-        target_q = self.target_critic(s2_batch, a2_batch) #detach to avoid updating target
-        y = r_batch + (1.0 - t_batch) * self.gamma * target_q.detach()
-        q = self.critic(s_batch, a_batch)
-
-        self.q_optimizer.zero_grad()
-        MSE = nn.MSELoss()
-        q_loss = MSE(q, y) #detach to avoid updating target
-        q_loss.backward()
-        self.q_optimizer.step()
-
-        #compute loss for actor
-        self.policy_optimizer.zero_grad()
-        policy_loss = -self.critic(s_batch, self.actor(s_batch))
-        policy_loss = policy_loss.mean()
-        policy_loss.backward()
-        self.policy_optimizer.step()
-
-        #soft update of the frozen target networks
-        for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
-            target_param.data.copy_(
-                target_param.data * (1.0 - self.tau) + param.data * self.tau
-            )
-
-        for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
-            target_param.data.copy_(
-                target_param.data * (1.0 - self.tau) + param.data * self.tau
-            )
-        return policy_loss, q_loss
 
     def get_action(self, state, step):
         state_norm = self.to_normalised_state(state)
-        action_norm = self.actor.get_action(state_norm)
-        action_norm += self.noise()*self.noise_factor
+        action_norm = self.agent.actor.get_action(state_norm)
+        action_norm += self.agent.noise()*self.agent.noise_factor
         action_norm = np.clip(action_norm, -1., 1.)
         action = self.to_action(action_norm)
         return action
 
-    def to_state(self, state):
-        state_k = (self.state_high - self.state_low)/ 2.
-        state_b = (self.state_high + self.state_low)/ 2.
-        return state_k * state + state_b
+    def check_for_teleop(self):
+        for contr_type in self.sim.controllers.keys():
+            if 'teleop' in contr_type:
+                self.teleop_controller = self.sim.controllers[contr_type]
 
-    def to_action(self, action):
-        act_k = (self.action_space_high - self.action_space_low)/ 2.
-        act_b = (self.action_space_high + self.action_space_low)/ 2.
-        return act_k * action + act_b
+    def update_agent(self):
+        if not self.checked_for_teleop:
+            self.check_for_teleop()
 
-    def to_normalised_state(self, state):
-        state_k_inv = 2./(self.state_high - self.state_low)
-        state_b = (self.state_high + self.state_low)/ 2.
-        return state_k_inv * (state - state_b)
+        # if we have teleop controller with a large enough buffer we can add these updates
+        teleop_buffer = None
+        if (self.teleop_controller is not None):
+            if self.teleop_controller.replay_buffer.count( ) > self.config.demo_min_buffer_size:
+                teleop_buffer = self.teleop_controller.replay_buffer
 
-    def to_normalised_action(self, action):
-        act_k_inv = 2./(self.action_space_high - self.action_space_low)
-        act_b = (self.action_space_high + self.action_space_low)/ 2.
-        return act_k_inv * (action - act_b)
+        if self.replay_buffer.count() > self.config.min_buffer_size:
+            self.agent.update(self.replay_buffer, teleop_buffer)
 
 class DDPGConfig:
-    def __init__(self):
-        pass
-
-class LearntConfig(object):
-    def __init__(self, rl_buffer_frames_min, ac_learning_rates, rl_steps_per_frame, td_max):
-        self.rl_buffer_frames_min = rl_buffer_frames_min
-        self.ac_learning_rates = ac_learning_rates
-        self.rl_steps_per_frame = rl_steps_per_frame
-        self.td_max = td_max
-
-class DemoConfig:
-    def __init__(self, bc_learning_rates, bc_steps_per_frame, td_max):
-        self.bc_learning_rates = bc_learning_rates
-        self.bc_steps_per_frame = bc_steps_per_frame
-        self.td_max = td_max
+    def __init__(self, lr_critic, lr_actor, rl_batch_size, demo_batch_size, min_buffer_size, tau, gamma, noise_factor, buffer_size, demo_min_buffer_size):
+        self.lr_critic = lr_critic
+        self.lr_actor = lr_actor
+        self.rl_batch_size = rl_batch_size
+        self.demo_batch_size = demo_batch_size
+        self.min_buffer_size = min_buffer_size
+        self.tau = tau
+        self.gamma = gamma
+        self.noise_factor = noise_factor
+        self.buffer_size = buffer_size
+        self.demo_min_buffer_size = demo_min_buffer_size
