@@ -408,7 +408,7 @@ class DDPGController(Controller):
         self.plot_policy = []
         self.plot_q = []
         self.plot_steps = []
-        self.buffer_start = 128
+        self.buffer_start = 256
         self.batch_size = 64
         self.tau = 0.001
         self.gamma = 0.99

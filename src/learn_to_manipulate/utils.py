@@ -38,7 +38,7 @@ def move_arm_initial(contr):
         pose_goal.position.z = zs[ind]
         if ind < len(qxs) - 1:
             contr.group.set_pose_target(pose_goal)
-            plan = self.group.go(wait=True)
+            plan = contr.group.go(wait=True)
             contr.group.stop()
             contr.group.clear_pose_targets()
         else:
