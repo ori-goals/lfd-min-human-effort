@@ -51,14 +51,38 @@ class DDPGAgent(object):
         except:
             pass
 
+    def get_batch(self, rl_replay_buffer, demo_replay_buffer):
+        '''
+        If each of the replay buffers exceeds the minimum sample size, both
+        the rl and demo replay buffers are sampled. The full_batch returns
+        the entire sample, which might include samples from both the rl and
+        demo buffer, and demo_batch is the sample from the demo buffer only.
+        '''
+        if (rl_replay_buffer is not None) and (demo_replay_buffer is None):
+            full_batch = rl_replay_buffer.sample(self.rl_batch_size)
+            demo_batch = None
+        elif (demo_replay_buffer is not None) and (rl_replay_buffer is None):
+            demo_batch = demo_replay_buffer.sample(self.demo_batch_size)
+            full_batch = demo_batch
+        elif (demo_replay_buffer is not None) and (rl_replay_buffer is not None):
+            demo_batch = demo_replay_buffer.sample(self.demo_batch_size)
+            rl_batch = rl_replay_buffer.sample(self.rl_batch_size)
+            full_batch = []
+            for index in range(5):
+                sample = np.concatenate((demo_batch[index], rl_batch[index]))
+                full_batch.append(sample)
+            full_batch = tuple(full_batch)
+        return full_batch, demo_batch
+
     def update(self, rl_replay_buffer=None, demo_replay_buffer=None):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = rl_replay_buffer.sample(self.rl_batch_size)
+        full_batch, demo_batch = self.get_batch(rl_replay_buffer, demo_replay_buffer)
+        s_batch, a_batch, r_batch, t_batch, s2_batch = full_batch
+        print(len(s_batch))
         s_batch = torch.FloatTensor(s_batch).to(self.device)
         a_batch = torch.FloatTensor(a_batch).to(self.device)
         r_batch = torch.FloatTensor(r_batch).unsqueeze(1).to(self.device)
         t_batch = torch.FloatTensor(np.float32(t_batch)).unsqueeze(1).to(self.device)
         s2_batch = torch.FloatTensor(s2_batch).to(self.device)
-
 
         #compute loss for critic
         a2_batch = self.target_actor(s2_batch)
