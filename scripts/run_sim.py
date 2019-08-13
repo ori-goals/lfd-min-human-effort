@@ -38,11 +38,9 @@ if __name__ == "__main__" :
     case_name = 'harder_rl_attempt_aug11'
     dense_rewards = []
     results = []
-    for i in range(3000):
-        if i < 3:
-            episode, dense_reward = sim.run_new_episode(case_name, i, controller_type = 'joystick_teleop')
-        else:
-            episode, dense_reward = sim.run_new_episode(case_name, i, controller_type = 'ddpg')
+    for i in range(5):
+        episode, dense_reward = sim.run_new_episode(case_name, i, controller_type = 'joystick_teleop')
+
 
         if (i-14) % 15 == 0:    # print every print_every episodes
             #subplot(sim.controllers['ddpg'])

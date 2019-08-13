@@ -24,6 +24,21 @@ from learn_to_manipulate.ddpg import DDPGAgent
 from utils import *
 from matplotlib import pyplot as plt
 from learn_to_manipulate.ddpg_models import Critic, Actor
+from roscpp.srv import SetLoggerLevel, GetLoggers
+import rosnode
+
+
+def shut_up_commander():
+    print('\n')
+    node_names = rosnode.get_node_names()
+    for name in node_names:
+        if 'move_group_commander_wrappers' in name:
+            get_logger_prox = rospy.ServiceProxy(name+'/get_loggers', GetLoggers)
+            resp = get_logger_prox()
+            set_logger_prox = rospy.ServiceProxy(name+'/set_logger_level', SetLoggerLevel)
+            for logger in resp.loggers:
+                set_logger_prox(logger.name, 'error')
+
 
 class Controller(object):
     def __init__(self, sim):
@@ -45,7 +60,7 @@ class Controller(object):
         laser_high = np.ones(30)
         self.states_high = np.concatenate((laser_high, np.array([1.0, 0.3])))
         self.states_low = np.concatenate((laser_low, np.array([0.0, -0.3])))
-
+        shut_up_commander()
 
     @classmethod
     def from_save_info(cls, sim, save_info):
@@ -78,21 +93,20 @@ class Controller(object):
                 rospy.sleep(0.1)
                 continue
             new_state, reward, result, episode_running = self.execute_action(action, step)
-            self.add_to_memory(state, action, reward, new_state, result, episode_running)
+            self.add_to_memory(state, action, reward, new_state, not episode_running)
             episode_reward += reward
             step += 1
         episode = self.end_episode(result, episode_reward, step)
         return episode, episode_reward
 
 
-    def add_to_memory(self, state, action, reward, new_state, result, episode_running):
+    def add_to_memory(self, state, action, reward, new_state, terminal):
         new_state_norm = self.to_normalised_state(new_state)
         state_norm = self.to_normalised_state(state)
         action_norm = self.to_normalised_action(action)
-        terminal = not episode_running
         self.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
         self.update_agent()
-        self.experience.add_step(state, action)
+        self.experience.add_step(state, action, reward, terminal, new_state)
 
     def begin_new_episode(self, case_name, case_number):
         confidence, sigma = self.get_controller_confidence()
@@ -100,7 +114,6 @@ class Controller(object):
 
     def end_episode(self, result, episode_reward, step):
         episode = self.experience.end_episode(result, self.type)
-        episode_length = len(self.experience.episode_df)
         self.print_result(result, episode_reward)
         if self.type == 'ddpg':
             self.agent.add_plotting_data(episode_reward, step, self.episode_number)
@@ -322,6 +335,7 @@ class SavedTeleopController(TeleopController):
 
     def run_episode(self, case_name, case_number):
         print("Starting new episode with saved controller type: %s" % (self.type))
+        self.begin_new_episode(case_name, case_number)
 
         # find the appropriate episode in saved experience
         episode_found = False
@@ -329,21 +343,20 @@ class SavedTeleopController(TeleopController):
             if episode.case_name == case_name and episode.case_number == case_number:
                 episode_found = True
                 break
-
         if not episode_found:
             sys.exit('Saved episode number %s and name %s not found.' % (str(case_number), case_name))
 
-        if episode.result:
-            print('Episode succeeded.')
-        else:
-            print('Episode failed by %s\n' % (episode.failure_mode))
-        self.end_episode(episode)
-        return episode
+        # loop through episode steps
+        episode_reward = 0.0
+        step = 0
+        for index, row in episode.episode_df.iterrows():
+            self.add_to_memory(row['state'], row['action'], row['dense_reward'], row['next_state'], row['terminal'])
+            episode_reward += row['dense_reward']
+            step += 1
+        result = {'success':episode.result, 'failure_mode':episode.failure_mode}
+        episode = self.end_episode(result, episode_reward, step)
+        return episode, episode_reward
 
-    def end_episode(self, episode):
-        self.episode_number += 1
-        self.experience.add_saved_episode(episode)
-        episode_length = len(episode.episode_df)
 
 class KeypadController(TeleopController):
     def __init__(self, sim):
@@ -381,7 +394,7 @@ class DDPGController(Controller):
         Controller.__init__(self, sim)
         self.type = 'ddpg'
         self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
-        self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, rl_batch_size=64, demo_batch_size=32,
+        self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, lr_bc=0.001, rl_batch_size=64, demo_batch_size=32,
                                 min_buffer_size=256, tau=0.001, gamma=0.99, noise_factor=0.5, buffer_size=50000,
                                 demo_min_buffer_size=128)
         self.agent = DDPGAgent(self.config, self.num_states, self.num_actions)
@@ -420,9 +433,10 @@ class DDPGController(Controller):
             self.agent.update(self.replay_buffer, teleop_buffer)
 
 class DDPGConfig:
-    def __init__(self, lr_critic, lr_actor, rl_batch_size, demo_batch_size, min_buffer_size, tau, gamma, noise_factor, buffer_size, demo_min_buffer_size):
+    def __init__(self, lr_critic, lr_actor, lr_bc, rl_batch_size, demo_batch_size, min_buffer_size, tau, gamma, noise_factor, buffer_size, demo_min_buffer_size):
         self.lr_critic = lr_critic
         self.lr_actor = lr_actor
+        self.lr_bc = lr_bc
         self.rl_batch_size = rl_batch_size
         self.demo_batch_size = demo_batch_size
         self.min_buffer_size = min_buffer_size

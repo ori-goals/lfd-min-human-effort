@@ -170,6 +170,7 @@ class Simulation(object):
             delete_model_prox('block')
 
     def spawn_block(self, case_name, case_number):
+        self.delete_block()
 
         # find the correct case from the file
         my_path = os.path.abspath(os.path.dirname(__file__))

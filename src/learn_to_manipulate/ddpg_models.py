@@ -14,7 +14,7 @@ def fanin_(size):
     return torch.Tensor(size).uniform_(-weight, weight)
 
 class Critic(nn.Module):
-    def __init__(self, state_dim, action_dim, h1=50, h2=30, init_w=3e-3):
+    def __init__(self, state_dim, action_dim, h1=64, h2=32, init_w=3e-3):
         super(Critic, self).__init__()
 
         self.linear1 = nn.Linear(state_dim, h1)
@@ -42,7 +42,7 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim, h1=50, h2=30, init_w=0.003):
+    def __init__(self, state_dim, action_dim, h1=64, h2=32, init_w=0.003):
         super(Actor, self).__init__()
 
         #self.bn0 = nn.BatchNorm1d(state_dim)

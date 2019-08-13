@@ -25,7 +25,7 @@ class Experience(object):
         self.prior_alpha = prior_alpha
         self.prior_beta = prior_beta
         self.length_scale = length_scale
-        self.col_names = ['state', 'dx', 'dy', 'reward', 'return']
+        self.col_names = ['state', 'action', 'dense_reward','terminal', 'next_state', 'binary_reward', 'binary_return']
         self.replay_buffer = pd.DataFrame(columns = self.col_names)
         self.episode_list = []
         self.replay_buffer_episodes = []
@@ -37,8 +37,8 @@ class Experience(object):
         self.episode_case_number = case_number
         self.episode_case_name = case_name
 
-    def add_step(self, state, action):
-        self.episode_df.loc[len(self.episode_df)] = [state, action[0], action[1], -1.0, -1.0]
+    def add_step(self, state, action, reward, terminal, new_state):
+        self.episode_df.loc[len(self.episode_df)] = [state, action, reward, terminal, new_state, -1.0, -1.0]
 
     def end_episode(self, result, controller_type):
         self.store_episode_result(result['success'])
@@ -72,8 +72,8 @@ class Experience(object):
             episode_return = 1.0
         else:
             episode_return = 0.0
-        self.episode_df['return'] = episode_return
-        self.episode_df.at[(len(self.episode_df)-1), 'reward'] = episode_return
+        self.episode_df['binary_return'] = episode_return
+        self.episode_df.at[(len(self.episode_df)-1), 'binary_reward'] = episode_return
 
     def get_state_value(self, state):
         alpha = copy.copy(self.prior_alpha)
@@ -89,12 +89,12 @@ class Experience(object):
             if weight < 1e-7:
                 weight = 1e-7
 
-            if np.isnan(round(row["return"])):
-                print(row["return"])
+            if np.isnan(round(row["binary_return"])):
+                print(row["binary_return"])
                 print(self.replay_buffer)
 
             # increment alpha for success and beta for failure
-            if int(round(row["return"])) == 1:
+            if int(round(row["binary_return"])) == 1:
                 alpha = alpha + weight
             else:
                 beta = beta + weight

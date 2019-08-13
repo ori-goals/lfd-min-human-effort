@@ -17,17 +17,19 @@ class DDPGAgent(object):
         self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=config.lr_critic)#, weight_decay=0.01)
         self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=config.lr_actor)
         self.replay_buffer = ReplayBuffer(config.buffer_size)
-        self.plot_reward = []
-        self.plot_average_rewards = []
-        self.plot_policy = []
-        self.plot_q = []
-        self.plot_steps = []
+        self.lr_actor = config.lr_actor
+        self.lr_bc = config.lr_bc
         self.min_buffer_size = config.min_buffer_size
         self.rl_batch_size = config.rl_batch_size
         self.demo_batch_size = config.demo_batch_size
         self.tau = config.tau
         self.gamma = config.gamma
         self.noise_factor = config.noise_factor
+        self.plot_reward = []
+        self.plot_average_rewards = []
+        self.plot_policy = []
+        self.plot_q = []
+        self.plot_steps = []
         self.copy_networks()
 
     def copy_networks(self):
@@ -75,9 +77,19 @@ class DDPGAgent(object):
         return full_batch, demo_batch
 
     def update(self, rl_replay_buffer=None, demo_replay_buffer=None):
+        '''
+        If the replay buffers are large enough, performs the update from Nair et
+        al Overcoming Exploration in Reinforcement Learning
+        with Demonstrations. This consists of performing a normal DDPG
+        update on experience sampled both from demonstrations and RL.
+
+        Additionally, a behaviour cloning update is performed on the demo batch
+        if each sample passes the "Q-filter".
+        '''
+
         full_batch, demo_batch = self.get_batch(rl_replay_buffer, demo_replay_buffer)
         s_batch, a_batch, r_batch, t_batch, s2_batch = full_batch
-        print(len(s_batch))
+
         s_batch = torch.FloatTensor(s_batch).to(self.device)
         a_batch = torch.FloatTensor(a_batch).to(self.device)
         r_batch = torch.FloatTensor(r_batch).unsqueeze(1).to(self.device)
@@ -90,15 +102,25 @@ class DDPGAgent(object):
         y = r_batch + (1.0 - t_batch) * self.gamma * target_q.detach()
         q = self.critic(s_batch, a_batch)
 
+        # critic update
         self.q_optimizer.zero_grad()
         MSE = nn.MSELoss()
-        q_loss = MSE(q, y) #detach to avoid updating target
+        q_loss = MSE(q, y)
         q_loss.backward()
         self.q_optimizer.step()
 
-        #compute loss for actor
+        # compute loss for actor
         self.policy_optimizer.zero_grad()
         policy_loss = -self.critic(s_batch, self.actor(s_batch))
+
+        # if demonstrations compute the behaviour cloning loss
+        if demo_batch is not None:
+            dem_s_batch, dem_a_batch, dem_r_batch, dem_t_batch, dem_s2_batch = demo_batch
+            dem_s_batch = torch.FloatTensor(dem_s_batch).to(self.device)
+            dem_a_batch = torch.FloatTensor(dem_a_batch).to(self.device)
+            pi = self.actor(dem_s_batch)
+            bc_loss = MSE(pi, dem_a_batch)
+            policy_loss += self.lr_bc/self.lr_actor*bc_loss #scale the bc loss according to the learning rate
         policy_loss = policy_loss.mean()
         policy_loss.backward()
         self.policy_optimizer.step()
