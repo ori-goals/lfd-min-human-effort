@@ -16,6 +16,7 @@ from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, Twist
 from sensor_msgs.msg import LaserScan
 from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
+from sensor_msgs.msg import Joy
 from torch import nn
 from learn_to_manipulate.actor_nn import ActorNN
 from learn_to_manipulate.experience import Experience
@@ -33,11 +34,14 @@ def shut_up_commander():
     node_names = rosnode.get_node_names()
     for name in node_names:
         if 'move_group_commander_wrappers' in name:
-            get_logger_prox = rospy.ServiceProxy(name+'/get_loggers', GetLoggers)
-            resp = get_logger_prox()
-            set_logger_prox = rospy.ServiceProxy(name+'/set_logger_level', SetLoggerLevel)
-            for logger in resp.loggers:
-                set_logger_prox(logger.name, 'error')
+            try:
+                get_logger_prox = rospy.ServiceProxy(name+'/get_loggers', GetLoggers)
+                resp = get_logger_prox()
+                set_logger_prox = rospy.ServiceProxy(name+'/set_logger_level', SetLoggerLevel)
+                for logger in resp.loggers:
+                    set_logger_prox(logger.name, 'error')
+            except:
+                pass
 
 
 class Controller(object):
@@ -54,8 +58,8 @@ class Controller(object):
         self.episode_number = 0
         self.init_pose = {'x':0.29, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
-        self.actions_high = np.array([0.05, 0.03])
-        self.actions_low = np.array([-0.03, -0.03])
+        self.actions_high = np.array([0.04, 0.03])
+        self.actions_low = np.array([-0.02, -0.03])
         laser_low = np.zeros(30)
         laser_high = np.ones(30)
         self.states_high = np.concatenate((laser_high, np.array([1.0, 0.3])))
@@ -77,7 +81,7 @@ class Controller(object):
         move_arm_initial(self)
 
     def run_episode(self, case_name, case_number):
-        print("Starting new episode with controller type: %s" % (self.type))
+        print("Starting episode %d with controller type: %s" % (self.sim.episode_number, self.type))
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
         episode_running = True
@@ -334,7 +338,7 @@ class SavedTeleopController(TeleopController):
         self.previous_experience = experience
 
     def run_episode(self, case_name, case_number):
-        print("Starting new episode with saved controller type: %s" % (self.type))
+        print("Starting episode %d with saved controller type: %s" % (self.sim.episode_number, self.type))
         self.begin_new_episode(case_name, case_number)
 
         # find the appropriate episode in saved experience
@@ -377,16 +381,25 @@ class JoystickController(TeleopController):
     def __init__(self, sim):
         TeleopController.__init__(self, sim)
         self.type = 'joystick_teleop'
-        rospy.Subscriber("gamepad_vel", Twist, self.store_gamepad_vel)
-        self.gamepad_vel = Twist()
+        rospy.Subscriber("/teleop_joystick/joy", Joy, self.store_gamepad_vel)
+        self.velx = 0.0
+        self.vely = 0.0
+        self.max_vel = 0.5
+        self.time_received = rospy.get_rostime().to_sec()
 
     def store_gamepad_vel(self, data):
-        self.gamepad_vel = data
+        self.velx = data.axes[4]*self.max_vel
+        self.vely = data.axes[3]*self.max_vel
+        self.time_received = rospy.get_rostime().to_sec()
 
     def get_action(self, state, step):
-        dx = self.time_step*self.gamepad_vel.linear.x
-        dy = self.time_step*self.gamepad_vel.angular.z
-        return  [dx, dy]
+        dx = self.time_step*self.velx
+        dy = self.time_step*self.vely
+        time_now = rospy.get_rostime().to_sec()
+        if abs(time_now - self.time_received) < 0.1:
+            return  [dx, dy]
+        else:
+            return [0.0, 0.0]
 
 class DDPGController(Controller):
 

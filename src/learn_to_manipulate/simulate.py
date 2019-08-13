@@ -25,6 +25,7 @@ class Simulation(object):
         self.success_reward = 1.0
         self.failure_reward = 0.0
         self.alpha = 0.5
+        self.episode_number = 0
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
         self.delete_block()
@@ -34,6 +35,7 @@ class Simulation(object):
         controller = self.choose_controller(switching_method, controller_type)
         episode, dense_reward = controller.run_episode(case_name, case_number)
         self.all_runs.append(episode)
+        self.episode_number += 1
         return episode, dense_reward
 
     @classmethod
