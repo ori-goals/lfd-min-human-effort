@@ -407,9 +407,9 @@ class DDPGController(Controller):
         Controller.__init__(self, sim)
         self.type = 'ddpg'
         self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
-        self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, lr_bc=0.001, rl_batch_size=64, demo_batch_size=32,
+        self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, lr_bc=0.001, rl_batch_size=128, demo_batch_size=64,
                                 min_buffer_size=256, tau=0.001, gamma=0.99, noise_factor=0.5, buffer_size=50000,
-                                demo_min_buffer_size=128)
+                                demo_min_buffer_size=128, q_filter_epsilon=0.02)
         self.agent = DDPGAgent(self.config, self.num_states, self.num_actions)
         self.replay_buffer = ReplayBuffer(self.config.buffer_size)
         self.checked_for_teleop = False
@@ -446,7 +446,7 @@ class DDPGController(Controller):
             self.agent.update(self.replay_buffer, teleop_buffer)
 
 class DDPGConfig:
-    def __init__(self, lr_critic, lr_actor, lr_bc, rl_batch_size, demo_batch_size, min_buffer_size, tau, gamma, noise_factor, buffer_size, demo_min_buffer_size):
+    def __init__(self, lr_critic, lr_actor, lr_bc, rl_batch_size, demo_batch_size, min_buffer_size, tau, gamma, noise_factor, buffer_size, demo_min_buffer_size, q_filter_epsilon):
         self.lr_critic = lr_critic
         self.lr_actor = lr_actor
         self.lr_bc = lr_bc
@@ -458,3 +458,4 @@ class DDPGConfig:
         self.noise_factor = noise_factor
         self.buffer_size = buffer_size
         self.demo_min_buffer_size = demo_min_buffer_size
+        self.q_filter_epsilon = q_filter_epsilon

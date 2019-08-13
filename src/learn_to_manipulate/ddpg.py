@@ -14,14 +14,15 @@ class DDPGAgent(object):
         self.actor = Actor(state_dim, action_dim).to(self.device)
         self.target_critic  = Critic(state_dim, action_dim).to(self.device)
         self.target_actor = Actor(state_dim, action_dim).to(self.device)
-        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=config.lr_critic)#, weight_decay=0.01)
-        self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=config.lr_actor)
+        self.q_optimizer  = opt.Adam(self.critic.parameters(),  lr=config.lr_critic, weight_decay=0.01)
+        self.policy_optimizer = opt.Adam(self.actor.parameters(), lr=config.lr_actor, weight_decay=0.01)
         self.replay_buffer = ReplayBuffer(config.buffer_size)
         self.lr_actor = config.lr_actor
         self.lr_bc = config.lr_bc
         self.min_buffer_size = config.min_buffer_size
         self.rl_batch_size = config.rl_batch_size
         self.demo_batch_size = config.demo_batch_size
+        self.q_filter_epsilon = config.q_filter_epsilon
         self.tau = config.tau
         self.gamma = config.gamma
         self.noise_factor = config.noise_factor
@@ -89,7 +90,6 @@ class DDPGAgent(object):
 
         full_batch, demo_batch = self.get_batch(rl_replay_buffer, demo_replay_buffer)
         s_batch, a_batch, r_batch, t_batch, s2_batch = full_batch
-
         s_batch = torch.FloatTensor(s_batch).to(self.device)
         a_batch = torch.FloatTensor(a_batch).to(self.device)
         r_batch = torch.FloatTensor(r_batch).unsqueeze(1).to(self.device)
@@ -118,8 +118,13 @@ class DDPGAgent(object):
             dem_s_batch, dem_a_batch, dem_r_batch, dem_t_batch, dem_s2_batch = demo_batch
             dem_s_batch = torch.FloatTensor(dem_s_batch).to(self.device)
             dem_a_batch = torch.FloatTensor(dem_a_batch).to(self.device)
-            pi = self.actor(dem_s_batch)
-            bc_loss = MSE(pi, dem_a_batch)
+            pi_a = self.actor(dem_s_batch)
+
+            dem_qval = self.critic(dem_s_batch, dem_a_batch).detach()
+            pi_qval = self.critic(dem_s_batch, pi_a).detach()
+            mask = dem_qval > pi_qval - pi_qval.abs()*self.q_filter_epsilon # don't apply q-filter update if policy action deemed better
+            bc_loss = MSE(pi_a*mask.type(torch.FloatTensor), dem_a_batch*mask.type(torch.FloatTensor))  # multiplying by the mask means if the mask is zero (policy action is better)
+                                                        # that state does not contribute to the behaviour cloning loss
             policy_loss += self.lr_bc/self.lr_actor*bc_loss #scale the bc loss according to the learning rate
         policy_loss = policy_loss.mean()
         policy_loss.backward()
