@@ -8,8 +8,8 @@ if __name__ == "__main__" :
     sim = Simulation()
     sim.add_controllers({'joystick_teleop':{}})
 
-    case_name = 'high_variation_aug13'
+    case_name = 'final_cases'
     for case_number in range(301):
         sim.run_new_episode(case_name, case_number, controller_type = 'joystick_teleop')
         if (case_number - 1) % 20 == 0:
-            sim.save_simulation('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/tuning_problem_domain/high_variation_aug13/demos')
+            sim.save_simulation('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/tuning_problem_domain/final_cases/first_200_demos')
