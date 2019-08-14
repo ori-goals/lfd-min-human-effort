@@ -115,7 +115,7 @@ class Controller(object):
         self.experience.new_episode(confidence, sigma, case_name, case_number)
 
     def end_episode(self, result, dense_reward, step):
-        episode = self.experience.end_episode(result, self.type)
+        episode = self.experience.end_episode(result, self.type, dense_reward)
         self.print_result(result, dense_reward)
         if self.type == 'ddpg':
             self.agent.add_plotting_data(dense_reward, step, self.episode_number)

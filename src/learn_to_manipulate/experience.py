@@ -9,7 +9,7 @@ from std_msgs.msg import Bool, Float64, Int16, String
 
 
 class Episode():
-    def __init__(self, df, controller_type, confidence, sigma, result, failure_mode, case_number, case_name):
+    def __init__(self, df, controller_type, confidence, sigma, result, failure_mode, case_number, case_name, dense_reward):
         self.episode_df = df
         self.confidence = confidence
         self.sigma = sigma
@@ -18,6 +18,7 @@ class Episode():
         self.case_number = case_number
         self.case_name = case_name
         self.controller_type = controller_type
+        self.dense_reward = dense_reward
 
 class Experience(object):
     def __init__(self, window_size, prior_alpha, prior_beta, length_scale):
@@ -40,11 +41,11 @@ class Experience(object):
     def add_step(self, state, action, reward, terminal, new_state):
         self.episode_df.loc[len(self.episode_df)] = [state, action, reward, terminal, new_state, -1.0, -1.0]
 
-    def end_episode(self, result, controller_type):
+    def end_episode(self, result, controller_type, dense_reward):
         self.store_episode_result(result['success'])
         episode = Episode(df = self.episode_df, controller_type = controller_type, confidence = self.episode_confidence,
             sigma = self.episode_confidence_sigma, result = result['success'], failure_mode = result['failure_mode'],
-            case_number = self.episode_case_number, case_name = self.episode_case_name)
+            case_number = self.episode_case_number, case_name = self.episode_case_name, dense_reward=dense_reward)
         self.episode_list.append(episode)
         self.add_to_replay_buffer(episode)
         return episode
