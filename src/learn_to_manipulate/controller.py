@@ -73,7 +73,6 @@ class Controller(object):
         controller.experience = save_info['experience']
         return controller
 
-
     def get_save_info(self):
         return {'type':self.type, 'experience':self.experience, 'config':self.config}
 
@@ -85,7 +84,7 @@ class Controller(object):
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
         episode_running = True
-        episode_reward = 0.0
+        dense_reward = 0.0
         step = 0
         if self.type == 'ddpg':
             self.agent.noise.reset()
@@ -98,29 +97,28 @@ class Controller(object):
                 continue
             new_state, reward, result, episode_running = self.execute_action(action, step)
             self.add_to_memory(state, action, reward, new_state, not episode_running)
-            episode_reward += reward
+            self.update_agent()
+            dense_reward += reward
             step += 1
-        episode = self.end_episode(result, episode_reward, step)
-        return episode, episode_reward
-
+        episode = self.end_episode(result, dense_reward, step)
+        return episode, dense_reward
 
     def add_to_memory(self, state, action, reward, new_state, terminal):
         new_state_norm = self.to_normalised_state(new_state)
         state_norm = self.to_normalised_state(state)
         action_norm = self.to_normalised_action(action)
         self.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
-        self.update_agent()
         self.experience.add_step(state, action, reward, terminal, new_state)
 
     def begin_new_episode(self, case_name, case_number):
         confidence, sigma = self.get_controller_confidence()
         self.experience.new_episode(confidence, sigma, case_name, case_number)
 
-    def end_episode(self, result, episode_reward, step):
+    def end_episode(self, result, dense_reward, step):
         episode = self.experience.end_episode(result, self.type)
-        self.print_result(result, episode_reward)
+        self.print_result(result, dense_reward)
         if self.type == 'ddpg':
-            self.agent.add_plotting_data(episode_reward, step, self.episode_number)
+            self.agent.add_plotting_data(dense_reward, step, self.episode_number)
         self.episode_number += 1
         return episode
 
@@ -351,15 +349,15 @@ class SavedTeleopController(TeleopController):
             sys.exit('Saved episode number %s and name %s not found.' % (str(case_number), case_name))
 
         # loop through episode steps
-        episode_reward = 0.0
+        dense_reward = 0.0
         step = 0
         for index, row in episode.episode_df.iterrows():
             self.add_to_memory(row['state'], row['action'], row['dense_reward'], row['next_state'], row['terminal'])
-            episode_reward += row['dense_reward']
+            dense_reward += row['dense_reward']
             step += 1
         result = {'success':episode.result, 'failure_mode':episode.failure_mode}
-        episode = self.end_episode(result, episode_reward, step)
-        return episode, episode_reward
+        episode = self.end_episode(result, dense_reward, step)
+        return episode, dense_reward
 
 
 class KeypadController(TeleopController):
@@ -402,12 +400,11 @@ class JoystickController(TeleopController):
             return [0.0, 0.0]
 
 class DDPGController(Controller):
-
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.type = 'ddpg'
         self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
-        self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, lr_bc=0.001, rl_batch_size=128, demo_batch_size=64,
+        self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, lr_bc=0.01, rl_batch_size=128, demo_batch_size=64,
                                 min_buffer_size=256, tau=0.001, gamma=0.99, noise_factor=0.5, buffer_size=50000,
                                 demo_min_buffer_size=128, q_filter_epsilon=0.02)
         self.agent = DDPGAgent(self.config, self.num_states, self.num_actions)
@@ -444,6 +441,104 @@ class DDPGController(Controller):
 
         if self.replay_buffer.count() > self.config.min_buffer_size:
             self.agent.update(self.replay_buffer, teleop_buffer)
+
+    def get_save_info(self):
+        return {'type':self.type, 'experience':self.experience, 'config':self.config, 'agent':self.agent}
+
+class SavedDDPGAgent(Controller):
+    def __init__(self, sim, file):
+        Controller.__init__(self, sim)
+        self.type = 'baseline'
+        self.experience = Experience(window_size = float('inf'), prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
+        self.config = []
+        self.baseline_agent = load_saved_agent(file)
+        self.checked_for_controllers = False
+        self.rl_controller = None
+        self.teleop_controller = None
+
+    def run_episode(self, case_name, case_number):
+        print("Starting episode %d with controller type: %s" % (self.sim.episode_number, self.type))
+        self.current_pose = copy.copy(self.init_pose)
+        self.begin_new_episode(case_name, case_number)
+        episode_running = True
+        dense_reward = 0.0
+        step = 0
+
+        while episode_running:
+            state = self.get_state()
+            action = self.get_action(state, step)
+            new_state, reward, result, episode_running = self.execute_action(action, step)
+            self.add_to_experience(state, action, reward, new_state, not episode_running)
+            dense_reward += reward
+            step += 1
+        episode = self.end_episode(result, dense_reward, step)
+
+
+        if not self.checked_for_controllers:
+            self.check_for_controllers()
+            self.checked_for_controllers = True
+
+        # if the episode was successful add each step to the demonstration replay buffer
+        # only if there is a ddpg agent to train and a teleop controller providing
+        # other demonstrations
+        if episode.result and (self.rl_controller is not None) and (self.teleop_controller is not None):
+            for index, row in episode.episode_df.iterrows():
+                self.add_to_replay_buffer(row['state'], row['action'], row['dense_reward'], row['next_state'], row['terminal'])
+                self.update_agent()
+        return episode, dense_reward
+
+    def add_to_experience(self, state, action, reward, new_state, terminal):
+        self.experience.add_step(state, action, reward, terminal, new_state)
+
+    def update_agent(self):
+
+        # if we have teleop controller with a large enough buffer we can add these updates
+        rl_buffer = None
+        if self.rl_controller.replay_buffer.count() > self.rl_controller.config.min_buffer_size:
+            rl_buffer = self.rl_controller.replay_buffer
+
+        if self.teleop_controller.replay_buffer.count() > self.rl_controller.config.demo_min_buffer_size:
+            self.rl_controller.agent.update(rl_buffer, self.telelop_controller.replay_buffer)
+
+    def add_to_replay_buffer(self, state, action, reward, new_state, terminal):
+        '''
+        Adds these steps to the replay buffer of the teleoop controller.
+        '''
+        new_state_norm = self.to_normalised_state(new_state)
+        state_norm = self.to_normalised_state(state)
+        action_norm = self.to_normalised_action(action)
+        self.telelop_controller.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
+
+
+    def load_saved_agent(self, file):
+        file = open(file,"rb")
+        all_runs, controller_save_info = pickle.load(file)
+        controller_found = False
+        for save_info in controller_save_info:
+            if save_info['type'] == 'ddpg':
+                agent  = save_info['agent']
+                controller_found = True
+
+        if not controller_found:
+            sys.exit('Controller type %s not found in file %s.' % (type, file))
+        return agent
+
+    def get_action(self, state, step):
+        state_norm = self.to_normalised_state(state)
+        action_norm = self.baseline_agent.actor.get_action(state_norm)
+        action_norm = np.clip(action_norm, -1., 1.)
+        action = self.to_action(action_norm)
+        return action
+
+    def get_save_info(self):
+        return {'type':self.type, 'experience':self.experience, 'agent':self.baseline_agent}
+
+    def check_for_controllers(self):
+        for contr_type in self.sim.controllers.keys():
+            if 'teleop' in contr_type:
+                self.teleop_controller = self.sim.controllers[contr_type]
+            elif 'ddpg' == contr_type:
+                self.rl_controller = self.sim.controllers[contr_type]
 
 class DDPGConfig:
     def __init__(self, lr_critic, lr_actor, lr_bc, rl_batch_size, demo_batch_size, min_buffer_size, tau, gamma, noise_factor, buffer_size, demo_min_buffer_size, q_filter_epsilon):
