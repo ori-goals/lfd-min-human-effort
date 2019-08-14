@@ -116,3 +116,83 @@ def plot_ddpg_success_rate(folders, method_names, max_episodes = 500):
     plt.legend()
     plt.title("sliding window of success rate for ddpg policy")
     plt.show()
+
+def all_episodes_to_single_dataframe(all_runs):
+    dataframe = pd.DataFrame(columns = all_runs[0].episode_df.columns)
+    for episode in self.replay_buffer_episodes:
+        dataframe = pd.concat([dataframe, episode.episode_df], ignore_index=True)
+    return dataframe
+
+def plot_length_param_estimation():
+
+    plt.close("all")
+    plt.rcParams.update({'font.size': 20})
+
+    # path to file with ddpg baseline performing 100 odd episodes of known experience
+    known_episodes_file_path = ''
+     # ddpg baseline performing a different set of 100 episodes which we try to estimate performance
+    unknown_episodes_file_path = ''
+    known_episodes_file = open(known_episodes_file_path, 'rb')
+    unknown_episodes_file = open(unknown_episodes_file_path, 'rb')
+
+    all_runs_known, controller_save_info  = pickle.load(known_episodes_file)
+    all_runs_unknown, controller_save_info  = pickle.load(unknown_episodes_file)
+    known_replay_buffer = all_episodes_to_single_dataframe(all_runs_known)
+
+    n_length_param = 50
+    length_parameters = np.logspace(-1.0, 2.0, num=n_length_param)
+    print(length_parameters)
+    log_likelihoods = np.zeros(len(length_parameters))
+
+    for length_param_index in range(len(length_parameters)):
+        length_param = length_parameters[length_param_index]
+        log_likelihood  = 0.0
+        print(length_param_index)
+
+        # loop through each new case
+        for episode in all_runs_unknown:
+            init_state = np.array(episode.experience_df.loc[0]["state"])
+
+            # initialise arrays to keep track of the stuff. NOTE: using arrays of ones defines the prior
+            alpha = 0.2
+            beta = 0.2
+
+            # loop through all entries in the replay buffer
+            for index, replay_buffer_row in known_replay_buffer.iterrows():
+                replay_buffer_state = np.array(replay_buffer_row['state'])
+                state_delta = init_state - replay_buffer_state
+
+                # calculate the difference between the two states
+                weight = np.exp(-1.0*(np.linalg.norm(state_delta/length_param))**2)
+
+                # increment alpha for success and beta for failure
+                if int(round(replay_buffer_row["return"])) == 1:
+                    alpha = alpha + weight
+                else:
+                    beta = beta + weight
+
+            p_current_state_success = alpha/(alpha + beta)
+
+            # nan if too far away from any existing experience. this is equivalent to no knowledge so we shall call it 0.5
+            if np.isnan(p_current_state_success):
+                p_current_state_success = 0.5
+
+            # prevent silly numbers blowing things up
+            if p_current_state_success < 0.000001:
+                p_current_state_success = 0.000001
+            elif p_current_state_success > 0.999999:
+                p_current_state_success = 0.999999
+
+            # if we succeeded the likelihood is the success probability
+            if episode.result:
+                log_likelihood = log_likelihood + np.log(p_current_state_success)
+            else:
+                log_likelihood = log_likelihood + np.log(1 - p_current_state_success)
+
+        log_likelihoods[length_param_index] = log_likelihood
+    fig, ax = plt.subplots()
+    ax.semilogx(length_parameters, log_likelihoods, "k", linewidth = 3.0)
+    ax.semilogx(length_parameters, log_likelihoods, "kx", markersize = 6.0)
+    ax.grid()
+    plt.xlabel("length parameter (m)")
+    plt.ylabel("log likelihood")

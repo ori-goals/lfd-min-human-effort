@@ -19,4 +19,4 @@ if __name__ == "__main__" :
             else:
                 sim.run_new_episode(case_name, case_number, controller_type = 'ddpg')
             if case_number == 749:
-                sim.save_simulation('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/hyperparam_tuning/bc_loss/150demos_then_rl/0_01')
+                sim.save_simulation('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/hyperparam_tuning/bc_loss/150demos_then_rl/0_0001')
