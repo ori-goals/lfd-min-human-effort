@@ -4,10 +4,6 @@ from learn_to_manipulate.plot import *
 
 
 if __name__ == "__main__" :
-    #folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/hyperparam_tuning/length_scale/baseline_controllers']
-    #methods = ['.']
-    #plot_ddpg_success_rate(folders, methods, max_episodes = 120)
-
     known_episodes_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/hyperparam_tuning/length_scale/experience_with_baseline/100_with_baseline.pkl'
     unknown_episodes_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/hyperparam_tuning/length_scale/experience_with_baseline/100_different_with_baseline.pkl'
     plot_length_param_estimation(known_episodes_file, unknown_episodes_file)

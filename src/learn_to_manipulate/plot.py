@@ -3,6 +3,7 @@ from os import listdir
 from os.path import isfile, join
 import pickle
 import numpy as np
+import pandas as pd
 
 def plot_human_cost_sliding_window(folders, method_names, max_episodes = 500):
     plt.close("all")
@@ -119,19 +120,15 @@ def plot_ddpg_success_rate(folders, method_names, max_episodes = 500):
 
 def all_episodes_to_single_dataframe(all_runs):
     dataframe = pd.DataFrame(columns = all_runs[0].episode_df.columns)
-    for episode in self.replay_buffer_episodes:
+    for episode in all_runs:
         dataframe = pd.concat([dataframe, episode.episode_df], ignore_index=True)
     return dataframe
 
-def plot_length_param_estimation():
+def plot_length_param_estimation(known_episodes_file_path, unknown_episodes_file_path):
 
     plt.close("all")
     plt.rcParams.update({'font.size': 20})
 
-    # path to file with ddpg baseline performing 100 odd episodes of known experience
-    known_episodes_file_path = ''
-     # ddpg baseline performing a different set of 100 episodes which we try to estimate performance
-    unknown_episodes_file_path = ''
     known_episodes_file = open(known_episodes_file_path, 'rb')
     unknown_episodes_file = open(unknown_episodes_file_path, 'rb')
 
@@ -140,7 +137,7 @@ def plot_length_param_estimation():
     known_replay_buffer = all_episodes_to_single_dataframe(all_runs_known)
 
     n_length_param = 50
-    length_parameters = np.logspace(-1.0, 2.0, num=n_length_param)
+    length_parameters = np.logspace(-2.0, 2.0, num=n_length_param)
     print(length_parameters)
     log_likelihoods = np.zeros(len(length_parameters))
 
@@ -151,7 +148,7 @@ def plot_length_param_estimation():
 
         # loop through each new case
         for episode in all_runs_unknown:
-            init_state = np.array(episode.experience_df.loc[0]["state"])
+            init_state = np.array(episode.episode_df.loc[0]["state"])
 
             # initialise arrays to keep track of the stuff. NOTE: using arrays of ones defines the prior
             alpha = 0.2
@@ -166,7 +163,7 @@ def plot_length_param_estimation():
                 weight = np.exp(-1.0*(np.linalg.norm(state_delta/length_param))**2)
 
                 # increment alpha for success and beta for failure
-                if int(round(replay_buffer_row["return"])) == 1:
+                if int(round(replay_buffer_row["binary_return"])) == 1:
                     alpha = alpha + weight
                 else:
                     beta = beta + weight
@@ -196,3 +193,4 @@ def plot_length_param_estimation():
     ax.grid()
     plt.xlabel("length parameter (m)")
     plt.ylabel("log likelihood")
+    plt.show()

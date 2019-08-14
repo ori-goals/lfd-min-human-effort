@@ -48,8 +48,8 @@ class Simulation(object):
 
         controller_list = {}
         for save_info in controller_save_info:
-            if save_info['type'] == 'learnt':
-                controller_list[save_info['type']] = LearntController.from_save_info(sim, save_info)
+            if save_info['type'] == 'ddpg':
+                controller_list[save_info['type']] = DDPGController.from_save_info(sim, save_info)
             elif save_info['type'] == 'keypad_teleop':
                 controller_list[save_info['type']] = KeypadController.from_save_info(sim, save_info)
             elif save_info['type'] == 'joystick_teleop':
@@ -94,6 +94,7 @@ class Simulation(object):
     def add_controllers(self, type_dict):
         controller_dict = {}
         for type in type_dict:
+            mydict = type_dict[type]
             if type == 'learnt':
                 controller_dict[type] = LearntController(self)
             elif type == 'keypad_teleop':
@@ -103,8 +104,9 @@ class Simulation(object):
             elif type == 'ddpg':
                 controller_dict[type] = DDPGController(self)
             elif type == 'saved_teleop':
-                mydict = type_dict[type]
                 controller_dict[mydict['type']] = SavedTeleopController(self, mydict['file'], mydict['type'])
+            elif type == 'baseline':
+                controller_dict['baseline'] = SavedDDPGAgent(self, mydict['file'])
         self.controllers = controller_dict
 
 

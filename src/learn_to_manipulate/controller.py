@@ -415,7 +415,6 @@ class DDPGController(Controller):
     def get_controller_confidence(self):
         return 1.0, 0.0
 
-
     def get_action(self, state, step):
         state_norm = self.to_normalised_state(state)
         action_norm = self.agent.actor.get_action(state_norm)
@@ -451,7 +450,7 @@ class SavedDDPGAgent(Controller):
         self.type = 'baseline'
         self.experience = Experience(window_size = float('inf'), prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
         self.config = []
-        self.baseline_agent = load_saved_agent(file)
+        self.baseline_agent = self.load_saved_agent(file)
         self.checked_for_controllers = False
         self.rl_controller = None
         self.teleop_controller = None
