@@ -15,16 +15,16 @@ from gazebo_msgs.srv import *
 from learn_to_manipulate.controller import *
 
 class Simulation(object):
-    def __init__(self, file_path = None):
+    def __init__(self, alpha, file_path = None):
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
         self.block_width = 0.04
         self.goal_width_x = 0.001
         self.goal_centre_x = 0.65
         self.all_runs = []
-        self.demo_cost = 0.3
+        self.demo_cost = 0.2
         self.success_reward = 1.0
         self.failure_reward = 0.0
-        self.alpha = 0.5
+        self.alpha = alpha
         self.episode_number = 0
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
@@ -129,7 +129,7 @@ class Simulation(object):
                 if ucb > max_ucb:
                     chosen_controller = controller
                     max_ucb = ucb
-                print('Controller type %s has confidence %.4f with sigma %.4f and ucb %.4f' %
+                print('%15s: conf %.4f, sigma %.4f, ucb %.4f' %
                     (controller.type, confidence, sigma, ucb))
             return chosen_controller
 

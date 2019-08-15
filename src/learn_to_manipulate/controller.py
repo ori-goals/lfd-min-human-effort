@@ -57,6 +57,7 @@ class Controller(object):
         self.pose_limits = {'min_x':0.25, 'max_x':0.75, 'min_y':-0.25, 'max_y':0.25}
         self.episode_number = 0
         self.init_pose = {'x':0.29, 'y':0.0, 'z':0.37, 'qx':0.0, 'qy':0.6697, 'qz':0.0, 'qw':0.7426}
+        self.current_pose = copy.copy(self.init_pose)
         rospy.Subscriber("fixed_laser/scan", LaserScan, self.store_laser)
         self.actions_high = np.array([0.04, 0.03])
         self.actions_low = np.array([-0.02, -0.03])
@@ -97,7 +98,7 @@ class Controller(object):
                 continue
             new_state, reward, result, episode_running = self.execute_action(action, step)
             self.add_to_memory(state, action, reward, new_state, not episode_running)
-            #self.update_agent()
+            self.update_agent()
             dense_reward += reward
             step += 1
         episode = self.end_episode(result, dense_reward, step)
@@ -119,6 +120,11 @@ class Controller(object):
         self.print_result(result, dense_reward)
         if self.type == 'ddpg':
             self.agent.add_plotting_data(dense_reward, step, self.episode_number)
+        elif self.rl_controller is not None:
+            # if there is an rl controller, add empty episode to rl controllers episode window
+            # this means as we add more demonstrations, the rl controller eventually
+            # forgets its earlier failures
+            self.rl_controller.experience.add_demo_episode()
         self.episode_number += 1
         return episode
 
@@ -188,16 +194,6 @@ class Controller(object):
         self.current_laser_scan = scan
 
     def get_state(self):
-        rospy.wait_for_service('/gazebo/get_model_state')
-        get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
-        block_pose = get_model_state_prox('block','').pose
-        blockx = block_pose.position.x
-        blocky = block_pose.position.y
-        xdiff = blockx - self.current_pose['x']
-        ydiff = blocky - self.current_pose['y']
-        block_angle = np.arccos(block_pose.orientation.w)*2
-        if block_pose.orientation.z < 0:
-            block_angle *= -1.
         return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])
 
     def execute_action(self, action, step):
@@ -289,7 +285,7 @@ class TeleopController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.config = []
-        self.experience = Experience(window_size = float('inf'), prior_alpha = 0.3, prior_beta = 0.2, length_scale = 2.0)
+        self.experience = Experience(window_size = float('inf'), prior_alpha = 1.0, prior_beta = 0.0, length_scale = 0.72)
         self.replay_buffer = ReplayBuffer(10000)
         self.checked_for_rl = False
         self.rl_controller = None
@@ -353,6 +349,7 @@ class SavedTeleopController(TeleopController):
         step = 0
         for index, row in episode.episode_df.iterrows():
             self.add_to_memory(row['state'], row['action'], row['dense_reward'], row['next_state'], row['terminal'])
+            self.update_agent()
             dense_reward += row['dense_reward']
             step += 1
         result = {'success':episode.result, 'failure_mode':episode.failure_mode}
@@ -403,17 +400,14 @@ class DDPGController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.type = 'ddpg'
-        self.experience = Experience(window_size = 50, prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
+        self.experience = Experience(window_size = 60, prior_alpha = 0.28, prior_beta = 0.07, length_scale = 0.72)
         self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, lr_bc=0.001, rl_batch_size=128, demo_batch_size=64,
                                 min_buffer_size=256, tau=0.001, gamma=0.99, noise_factor=0.4, buffer_size=50000,
-                                demo_min_buffer_size=128, q_filter_epsilon=0.02)
+                                demo_min_buffer_size=128, q_filter_epsilon=0.01)
         self.agent = DDPGAgent(self.config, self.num_states, self.num_actions)
         self.replay_buffer = ReplayBuffer(self.config.buffer_size)
         self.checked_for_teleop = False
         self.teleop_controller = None
-
-    def get_controller_confidence(self):
-        return 1.0, 0.0
 
     def get_action(self, state, step):
         state_norm = self.to_normalised_state(state)
@@ -448,7 +442,7 @@ class SavedDDPGAgent(Controller):
     def __init__(self, sim, file):
         Controller.__init__(self, sim)
         self.type = 'baseline'
-        self.experience = Experience(window_size = float('inf'), prior_alpha = 0.2, prior_beta = 0.3, length_scale = 2.0)
+        self.experience = Experience(window_size = float('inf'), prior_alpha = 0.28, prior_beta = 0.069, length_scale = 0.72)
         self.config = []
         self.baseline_agent = self.load_saved_agent(file)
         self.checked_for_controllers = False
@@ -456,6 +450,10 @@ class SavedDDPGAgent(Controller):
         self.teleop_controller = None
 
     def run_episode(self, case_name, case_number):
+        if not self.checked_for_controllers:
+            self.check_for_controllers()
+            self.checked_for_controllers = True
+
         print("Starting episode %d with controller type: %s" % (self.sim.episode_number, self.type))
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
@@ -471,11 +469,6 @@ class SavedDDPGAgent(Controller):
             dense_reward += reward
             step += 1
         episode = self.end_episode(result, dense_reward, step)
-
-
-        if not self.checked_for_controllers:
-            self.check_for_controllers()
-            self.checked_for_controllers = True
 
         # if the episode was successful add each step to the demonstration replay buffer
         # only if there is a ddpg agent to train and a teleop controller providing

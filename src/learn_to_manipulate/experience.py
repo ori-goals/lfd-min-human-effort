@@ -50,6 +50,10 @@ class Experience(object):
         self.add_to_replay_buffer(episode)
         return episode
 
+    def add_demo_episode(self):
+        self.add_to_replay_buffer('demo_episode')
+        print('adding demo episode')
+
     def add_saved_episode(self, episode):
         self.episode_list.append(episode)
         self.add_to_replay_buffer(episode)
@@ -60,12 +64,14 @@ class Experience(object):
         self.replay_buffer_episodes.insert(0, episode)
         if self.window_size != float('inf'):
             self.replay_buffer_episodes = self.replay_buffer_episodes[0:self.window_size]
+        print('There are %i demo episodes in the window' %(self.replay_buffer_episodes.count('demo_episode')))
 
         # construct the replay buffer for learner from the window of experience
         self.replay_buffer = pd.DataFrame(columns = self.col_names)
         for episode in self.replay_buffer_episodes:
-            df_reverse = episode.episode_df.reindex(index=episode.episode_df.index[::-1])
-            self.replay_buffer = pd.concat([self.replay_buffer, df_reverse], ignore_index=True)
+            if episode != 'demo_episode':
+                df_reverse = episode.episode_df.reindex(index=episode.episode_df.index[::-1])
+                self.replay_buffer = pd.concat([self.replay_buffer, df_reverse], ignore_index=True)
 
 
     def store_episode_result(self, result):
