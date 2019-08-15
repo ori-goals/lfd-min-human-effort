@@ -5,6 +5,9 @@ from collections import deque
 import random
 import geometry_msgs
 import rospy
+import pickle
+import time
+from learn_to_manipulate.experience import Experience
 
 def qv_rotate(q1, v1):
     q2 = list(v1)
@@ -12,6 +15,31 @@ def qv_rotate(q1, v1):
     return tf.transformations.quaternion_multiply(
         tf.transformations.quaternion_multiply(q1, q2),
         tf.transformations.quaternion_conjugate(q1))[0:3]
+
+def join_demo_files(file1, file2, controller_type, save_folder):
+    file1 = open(file1,"rb")
+    file2 = open(file2,"rb")
+    all_runs1, controller_save_info1 = pickle.load(file1)
+    all_runs2, controller_save_info2 = pickle.load(file2)
+    for save_info in controller_save_info1:
+        if save_info['type'] == controller_type:
+            experience1 = save_info['experience']
+    for save_info in controller_save_info2:
+        if save_info['type'] == controller_type:
+            experience2 = save_info['experience']
+
+    new_experience = Experience(float('inf'), 1, 1, 1)
+    all_runs = experience1.episode_list + experience2.episode_list
+    new_experience.episode_list = all_runs
+    for episode in new_experience.episode_list:
+        print(episode.case_number)
+    save_info = {'type':controller_type, 'experience':new_experience, 'config':[]}
+    fname = time.strftime("%Y-%m-%d-%H-%M") + '_merged'
+    new_file_path = save_folder + '/' + fname + '.pkl'
+
+    with open(new_file_path, 'w') as f:
+        pickle.dump([all_runs, [save_info]], f)
+        f.close
 
 def move_arm_initial(contr):
     qxs = [-1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, contr.init_pose['qx']]

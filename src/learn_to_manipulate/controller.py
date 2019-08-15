@@ -97,7 +97,7 @@ class Controller(object):
                 continue
             new_state, reward, result, episode_running = self.execute_action(action, step)
             self.add_to_memory(state, action, reward, new_state, not episode_running)
-            self.update_agent()
+            #self.update_agent()
             dense_reward += reward
             step += 1
         episode = self.end_episode(result, dense_reward, step)
