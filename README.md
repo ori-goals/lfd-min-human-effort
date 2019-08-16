@@ -3,6 +3,7 @@
 TODO: Explain ur_gazebo arm install, and the mod to add implement
 TODO: Explain modified Hokuyo laser and where to put this.
 TODO: Explain how to reconfigure a different script to run
+TODO: Should I recommend Gazebo 9? Had block spawn problem in 7.
 
 roslaunch ur_gazebo ur5_joint_limited.launch  
 
