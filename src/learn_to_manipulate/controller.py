@@ -400,7 +400,7 @@ class DDPGController(Controller):
     def __init__(self, sim):
         Controller.__init__(self, sim)
         self.type = 'ddpg'
-        self.experience = Experience(window_size = 60, prior_alpha = 0.28, prior_beta = 0.07, length_scale = 0.72)
+        self.experience = Experience(window_size = 50, prior_alpha = 0.28, prior_beta = 0.07, length_scale = 0.72)
         self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, lr_bc=0.001, rl_batch_size=128, demo_batch_size=64,
                                 min_buffer_size=256, tau=0.001, gamma=0.99, noise_factor=0.4, buffer_size=50000,
                                 demo_min_buffer_size=128, q_filter_epsilon=0.01)

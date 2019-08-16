@@ -168,10 +168,11 @@ class Simulation(object):
         get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
         world = get_world_properties_prox()
 
-        if 'block' in world.model_names:
-            rospy.wait_for_service('/gazebo/delete_model')
-            delete_model_prox = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
-            delete_model_prox('block')
+        rospy.wait_for_service('/gazebo/delete_model')
+        delete_model_prox = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
+        for name in world.model_names:
+            if 'block' in name:
+                delete_model_prox(name)
 
     def spawn_block(self, case_name, case_number):
         self.delete_block()

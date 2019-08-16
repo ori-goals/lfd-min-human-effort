@@ -52,7 +52,6 @@ class Experience(object):
 
     def add_demo_episode(self):
         self.add_to_replay_buffer('demo_episode')
-        print('adding demo episode')
 
     def add_saved_episode(self, episode):
         self.episode_list.append(episode)

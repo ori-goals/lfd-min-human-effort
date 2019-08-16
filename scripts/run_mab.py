@@ -6,47 +6,27 @@ import logging
 import numpy as np
 
 def human_learner_mab():
-    saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_999.pkl'
-    repeats = 5
-    episodes = 1000
-    for i in range(repeats):
-        alpha = 0.3
-        sim = Simulation(alpha=alpha)
-        save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_0_3'
-        sim.add_controllers({'ddpg':{}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
-        case_name = 'final_cases'
+    saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
+    repeats = 4
+    episodes = 1400
+    alphas = [0.5, 2.0]
+    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_0_5',
+                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_2_0']
+    for alpha_ind in range(len(alphas)):
+        alpha = alphas[alpha_ind]
+        save_folder = folders[alpha_ind]
+        for i in range(repeats):
+            sim = Simulation(alpha=alpha)
+            sim.add_controllers({'ddpg':{}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
+            case_name = 'final_cases'
+            case_count = 0
+            for case_number in np.random.choice(episodes, episodes, replace=False):
+                sim.run_new_episode(case_name, case_number, switching_method = 'contextual_bandit')
+                if (case_count + 1) % 100 == 0:
+                    sim.save_simulation(save_folder)
+                case_count += 1
+            sim.save_simulation(save_folder)
 
-        for case_number in np.random.choice(episodes, episodes, replace=False):
-            sim.run_new_episode(case_name, case_number, switching_method = 'contextual_bandit')
-            if (case_number + 1) % 100 == 0:
-                sim.save_simulation(save_folder)
-        sim.save_simulation(save_folder)
-
-    for i in range(repeats):
-        alpha = 0.1
-        sim = Simulation(alpha=alpha)
-        save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_0_1'
-        sim.add_controllers({'ddpg':{}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
-        case_name = 'final_cases'
-
-        for case_number in np.random.choice(episodes, episodes, replace=False):
-            sim.run_new_episode(case_name, case_number, switching_method = 'contextual_bandit')
-            if (case_number + 1) % 100 == 0:
-                sim.save_simulation(save_folder)
-        sim.save_simulation(save_folder)
-
-    for i in range(repeats):
-        alpha = 1.0
-        sim = Simulation(alpha=alpha)
-        save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_1_0'
-        sim.add_controllers({'ddpg':{}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
-        case_name = 'final_cases'
-
-        for case_number in np.random.choice(episodes, episodes, replace=False):
-            sim.run_new_episode(case_name, case_number, switching_method = 'contextual_bandit')
-            if (case_number + 1) % 100 == 0:
-                sim.save_simulation(save_folder)
-        sim.save_simulation(save_folder)
 
 def human_then_learner():
     human_episodes = 250
@@ -67,4 +47,4 @@ def human_then_learner():
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate')
     human_learner_mab()
-    human_then_learner()
+    #human_then_learner()
