@@ -67,6 +67,11 @@ class Controller(object):
         self.states_low = np.concatenate((laser_low, np.array([0.0, -0.3])))
         shut_up_commander()
 
+        rospy.wait_for_service('/gazebo/get_model_state')
+        self.get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
+        rospy.wait_for_service('/gazebo/get_world_properties')
+        self.get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
+
     @classmethod
     def from_save_info(cls, sim, save_info):
         controller = cls(sim)
@@ -136,9 +141,19 @@ class Controller(object):
 
     def check_episode_status(self, step):
         episode_running = True
-        rospy.wait_for_service('/gazebo/get_model_state')
-        get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
-        block_pose = get_model_state_prox('block','').pose
+
+        world = self.get_world_properties_prox()
+        for name in world.model_names:
+            if 'block' in name:
+                block_name = name
+
+        resp = self.get_model_state_prox(block_name,'')
+        while not resp.success:
+            print('Could not get model state when checking ep status, trying again.')
+            rospy.sleep(0.2)
+            resp = self.get_model_state_prox(block_name,'')
+
+        block_pose = resp.pose
 
         block_corners = [[self.sim.block_width/2.0, self.sim.block_length/2.0, 0.0],
                         [self.sim.block_width/2.0, -self.sim.block_length/2.0, 0.0],
@@ -197,9 +212,17 @@ class Controller(object):
         return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])
 
     def execute_action(self, action, step):
-        rospy.wait_for_service('/gazebo/get_model_state')
-        get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
-        old_block_pose = get_model_state_prox('block','').pose
+        world = self.get_world_properties_prox()
+        for name in world.model_names:
+            if 'block' in name:
+                block_name = name
+
+        resp = self.get_model_state_prox(block_name,'')
+        while not resp.success:
+            print('Could not get model state while executing action, trying again.')
+            rospy.sleep(0.2)
+            resp = self.get_model_state_prox(block_name,'')
+        old_block_pose = resp.pose
 
         old_arm_pose = copy.copy(self.current_pose)
         self.current_pose['x'] += action[0]
@@ -224,7 +247,13 @@ class Controller(object):
         plan, fraction = self.group.compute_cartesian_path(waypoints,  0.005, 0.0)
         self.group.execute(plan, wait=True)
 
-        new_block_pose = get_model_state_prox('block','').pose
+        resp = self.get_model_state_prox(block_name,'')
+        while not resp.success:
+            print('Could not get model state, trying again.')
+            rospy.sleep(0.2)
+            resp = self.get_model_state_prox(block_name,'')
+        new_block_pose = resp.pose
+
         new_state = self.get_state()
         result, episode_running = self.check_episode_status(step)
         reward = self.get_dense_reward(old_block_pose, new_block_pose, result)

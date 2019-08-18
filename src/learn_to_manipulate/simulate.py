@@ -26,9 +26,13 @@ class Simulation(object):
         self.failure_reward = 0.0
         self.alpha = alpha
         self.episode_number = 0
+        self.block_num = 0
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
-        self.delete_block()
+        rospy.wait_for_service('/gazebo/get_world_properties')
+        get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
+
+        # check block has been deleted
         self.controllers[list(self.controllers.keys())[0]].set_arm_initial()
         self.spawn_table()
         self.spawn_block(case_name, case_number)
@@ -172,7 +176,14 @@ class Simulation(object):
         delete_model_prox = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
         for name in world.model_names:
             if 'block' in name:
-                delete_model_prox(name)
+                succeeded = False
+                while not succeeded:
+                    delete_model_prox(name)
+                    rospy.sleep(0.5)
+                    world = get_world_properties_prox()
+                    if name not in world.model_names:
+                        succeeded = True
+
 
     def spawn_block(self, case_name, case_number):
         self.delete_block()
@@ -205,5 +216,13 @@ class Simulation(object):
 
         rospy.wait_for_service('gazebo/spawn_sdf_model')
         spawn_model_prox = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
-        spawn_model_prox("block", sdf, "simulation", initial_pose, "world")
-        rospy.sleep(0.5)
+        rospy.wait_for_service('/gazebo/get_model_state')
+        get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
+        succeeded = False
+        while not succeeded:
+            spawn_model_prox("block" + str(self.block_num), sdf, "simulation", initial_pose, "world")
+            rospy.sleep(0.5)
+            resp = get_model_state_prox("block" + str(self.block_num),'')
+            if resp.success:
+                succeeded = True
+        #self.block_num += 1

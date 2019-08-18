@@ -7,11 +7,10 @@ import numpy as np
 
 def human_learner_mab():
     saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
-    repeats = 4
+    repeats = 5
     episodes = 1400
-    alphas = [0.5, 2.0]
-    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_0_5',
-                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_2_0']
+    alphas = [2.0]
+    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_2_0']
     for alpha_ind in range(len(alphas)):
         alpha = alphas[alpha_ind]
         save_folder = folders[alpha_ind]
