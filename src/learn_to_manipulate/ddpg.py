@@ -31,6 +31,7 @@ class DDPGAgent(object):
         self.plot_policy = []
         self.plot_q = []
         self.plot_steps = []
+        self.noise_decay = config.noise_decay
         self.copy_networks()
 
     def copy_networks(self):

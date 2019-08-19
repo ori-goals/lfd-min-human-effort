@@ -431,8 +431,8 @@ class DDPGController(Controller):
         self.type = 'ddpg'
         self.experience = Experience(window_size = 50, prior_alpha = 0.28, prior_beta = 0.07, length_scale = 0.72)
         self.config = DDPGConfig(lr_critic=0.001, lr_actor=0.0001, lr_bc=0.001, rl_batch_size=128, demo_batch_size=64,
-                                min_buffer_size=256, tau=0.001, gamma=0.99, noise_factor=0.4, buffer_size=50000,
-                                demo_min_buffer_size=128, q_filter_epsilon=0.01)
+                                min_buffer_size=256, tau=0.001, gamma=0.99, noise_factor=0.5, buffer_size=50000,
+                                demo_min_buffer_size=128, q_filter_epsilon=0.02, noise_decay=0.998)
         self.agent = DDPGAgent(self.config, self.num_states, self.num_actions)
         self.replay_buffer = ReplayBuffer(self.config.buffer_size)
         self.checked_for_teleop = False
@@ -441,7 +441,7 @@ class DDPGController(Controller):
     def get_action(self, state, step):
         state_norm = self.to_normalised_state(state)
         action_norm = self.agent.actor.get_action(state_norm)
-        action_norm += self.agent.noise()*self.agent.noise_factor
+        action_norm += self.agent.noise()*self.agent.noise_factor*self.agent.noise_decay**self.episode_number
         action_norm = np.clip(action_norm, -1., 1.)
         action = self.to_action(action_norm)
         return action
@@ -562,7 +562,7 @@ class SavedDDPGAgent(Controller):
                 self.rl_controller = self.sim.controllers[contr_type]
 
 class DDPGConfig:
-    def __init__(self, lr_critic, lr_actor, lr_bc, rl_batch_size, demo_batch_size, min_buffer_size, tau, gamma, noise_factor, buffer_size, demo_min_buffer_size, q_filter_epsilon):
+    def __init__(self, lr_critic, lr_actor, lr_bc, rl_batch_size, demo_batch_size, min_buffer_size, tau, gamma, noise_factor, buffer_size, demo_min_buffer_size, q_filter_epsilon, noise_decay):
         self.lr_critic = lr_critic
         self.lr_actor = lr_actor
         self.lr_bc = lr_bc
@@ -575,3 +575,4 @@ class DDPGConfig:
         self.buffer_size = buffer_size
         self.demo_min_buffer_size = demo_min_buffer_size
         self.q_filter_epsilon = q_filter_epsilon
+        self.noise_decay = noise_decay
