@@ -55,7 +55,7 @@ def plot_human_cost_sliding_window(folders, method_names, num_episodes = 500, co
         plt.fill_between(range(len(cost_means)), cost_means-cost_stddevs, cost_means+cost_stddevs, color = colors[folder_ind], alpha=.1)
     plt.xlabel("episodes")
     plt.ylabel("cost per episode")
-    plt.ylim([0.0, failure_cost+1.0])
+    plt.ylim([0.0, failure_cost-1.0])
     plt.xlim([0.0, float(max_episodes)])
     plt.legend()
     plt.title("sliding window of mean cost per episode")
