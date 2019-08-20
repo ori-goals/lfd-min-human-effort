@@ -4,6 +4,13 @@ import matplotlib.pyplot as plt
 import rospy
 import logging
 import numpy as np
+import os
+
+def  episode_complete():
+    my_path = os.path.abspath(os.path.dirname(__file__))
+    my_path = os.path.join(my_path, "../scripts/.run_completed.txt")
+    file = open(my_path,"w")
+    file.close()
 
 def human_learner_mab():
     saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
@@ -21,6 +28,7 @@ def human_learner_mab():
             case_count = 0
             for case_number in np.random.choice(episodes, episodes, replace=False):
                 sim.run_new_episode(case_name, case_number, switching_method = 'contextual_bandit')
+                episode_complete()
                 if (case_count + 1) % 100 == 0:
                     sim.save_simulation(save_folder)
                 case_count += 1
@@ -51,6 +59,7 @@ def human_then_learner():
                 if (case_count + 1) % 100 == 0:
                     sim.save_simulation(save_folder)
                 case_count += 1
+                episode_complete()
             sim.save_simulation(save_folder)
 
 if __name__ == "__main__" :

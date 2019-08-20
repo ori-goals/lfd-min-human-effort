@@ -177,16 +177,14 @@ class Simulation(object):
         for name in world.model_names:
             if 'block' in name:
                 succeeded = False
-                attempt = 0
                 while not succeeded:
                     delete_model_prox(name)
                     rospy.sleep(0.5)
                     world = get_world_properties_prox()
-                    if (name not in world.model_names) or attempt > 10:
+                    if (name not in world.model_names):
                         succeeded = True
                     else:
                         print('Failed to delete block')
-                        attempt += 1
 
 
     def spawn_block(self, case_name, case_number):
@@ -223,14 +221,11 @@ class Simulation(object):
         rospy.wait_for_service('/gazebo/get_model_state')
         get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
         succeeded = False
-        attempt = 0
         while not succeeded:
             spawn_model_prox("block" + str(self.block_num), sdf, "simulation", initial_pose, "world")
             rospy.sleep(0.5)
             resp = get_model_state_prox("block" + str(self.block_num),'')
-            if (resp.success) or (attempt > 10):
+            if (resp.success):
                 succeeded = True
             else:
                 print('Failed to spawn block')
-                attempt += 1
-        #self.block_num += 1
