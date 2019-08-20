@@ -42,35 +42,17 @@ def join_demo_files(file1, file2, controller_type, save_folder):
         f.close
 
 def move_arm_initial(contr):
-    qxs = [-1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, contr.init_pose['qx']]
-    qys = [0.0, 0.0, 0.0, 0.0, 0.0, 0.6697, 0.6697, contr.init_pose['qy']]
-    qzs = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, contr.init_pose['qz']]
-    qws = [0.0, 0.0, 0.0, 0.0, 0.0, 0.7426, 0.7426, contr.init_pose['qw']]
-    xs = [0.816, 0.70, 0.7, 0.7, 0.7, 0.77, 0.77, contr.init_pose['x']]
-    ys = [0.191, 0.20, 0.199, 0.2, 0.2, 0.2, 0.0, contr.init_pose['y']]
-    zs = [0.0, 0.12, 0.253, 0.35, 0.35, 0.35, 0.37, contr.init_pose['z']]
-    current_pose = contr.group.get_current_pose().pose
-    if current_pose.position.z > 0.3:
-        start_ind = len(qxs) - 1
-    else:
-        start_ind = 0
+    joint_goal = contr.group.get_current_joint_values()
+    joint_goal[0] = -0.3981706
+    joint_goal[1] = -2.1341021
+    joint_goal[2] = 2.1484844
+    joint_goal[3] = -1.6805012
+    joint_goal[4] = -1.530783
+    joint_goal[5] = -0.3962608
+    contr.group.go(joint_goal, wait=True)
+    contr.group.stop()
 
-    for ind in range(start_ind, len(qxs)):
-        pose_goal = geometry_msgs.msg.Pose()
-        pose_goal.orientation.x = qxs[ind]
-        pose_goal.orientation.y = qys[ind]
-        pose_goal.orientation.z = qzs[ind]
-        pose_goal.orientation.w = qws[ind]
-        pose_goal.position.x = xs[ind]
-        pose_goal.position.y = ys[ind]
-        pose_goal.position.z = zs[ind]
-        if ind < len(qxs) - 1:
-            contr.group.set_pose_target(pose_goal)
-            plan = contr.group.go(wait=True)
-            contr.group.stop()
-            contr.group.clear_pose_targets()
-        else:
-            contr.go_to_pose(contr.init_pose)
+    contr.go_to_pose(contr.init_pose)
     rospy.sleep(1.0)
 
 class OrnsteinUhlenbeckActionNoise:
