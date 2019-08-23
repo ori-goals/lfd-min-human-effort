@@ -502,9 +502,12 @@ class SavedDDPGAgent(Controller):
         # if the episode was successful add each step to the demonstration replay buffer
         # only if there is a ddpg agent to train and a teleop controller providing
         # other demonstrations
-        if episode.result and (self.rl_controller is not None) and (self.teleop_controller is not None):
+        if (self.rl_controller is not None) and (self.teleop_controller is not None):
             for index, row in episode.episode_df.iterrows():
-                self.add_to_replay_buffer(row['state'], row['action'], row['dense_reward'], row['next_state'], row['terminal'])
+                if episode.result:
+                    self.add_to_demo_replay_buffer(row['state'], row['action'], row['dense_reward'], row['next_state'], row['terminal'])
+                else:
+                    self.add_to_rl_replay_buffer(row['state'], row['action'], row['dense_reward'], row['next_state'], row['terminal'])
                 self.update_agent()
         return episode, dense_reward
 
@@ -519,17 +522,25 @@ class SavedDDPGAgent(Controller):
             rl_buffer = self.rl_controller.replay_buffer
 
         if self.teleop_controller.replay_buffer.count() > self.rl_controller.config.demo_min_buffer_size:
-            self.rl_controller.agent.update(rl_buffer, self.telelop_controller.replay_buffer)
+            self.rl_controller.agent.update(rl_buffer, self.teleop_controller.replay_buffer)
 
-    def add_to_replay_buffer(self, state, action, reward, new_state, terminal):
+    def add_to_demo_replay_buffer(self, state, action, reward, new_state, terminal):
         '''
         Adds these steps to the replay buffer of the teleoop controller.
         '''
         new_state_norm = self.to_normalised_state(new_state)
         state_norm = self.to_normalised_state(state)
         action_norm = self.to_normalised_action(action)
-        self.telelop_controller.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
+        self.teleop_controller.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
 
+    def add_to_rl_replay_buffer(self, state, action, reward, new_state, terminal):
+        '''
+        Adds these steps to the replay buffer of the teleoop controller.
+        '''
+        new_state_norm = self.to_normalised_state(new_state)
+        state_norm = self.to_normalised_state(state)
+        action_norm = self.to_normalised_action(action)
+        self.rl_controller.replay_buffer.add(state_norm, action_norm, reward, terminal, new_state_norm)
 
     def load_saved_agent(self, file):
         file = open(file,"rb")

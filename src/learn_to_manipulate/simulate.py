@@ -40,6 +40,7 @@ class Simulation(object):
         episode, dense_reward = controller.run_episode(case_name, case_number)
         self.all_runs.append(episode)
         self.episode_number += 1
+        print('RL buffer size: %g, Demo buffer size: %g' % (self.controllers['ddpg'].replay_buffer.count(), self.controllers['joystick_teleop'].replay_buffer.count()))
         return episode, dense_reward
 
     @classmethod
