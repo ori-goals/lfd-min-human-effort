@@ -179,6 +179,7 @@ class Simulation(object):
                     max_ucb = ucb
             return chosen_controller
         elif switching_method == 'softmax':
+            self.ncb_window = self.ncb_window[0:self.ncb_window_size]
             types = []
             vals = []
             for type, controller in self.controllers.items():

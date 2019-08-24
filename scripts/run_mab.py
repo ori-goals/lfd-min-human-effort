@@ -124,13 +124,13 @@ def human_learner_baseline_ncb():
 def human_learner_baseline_softmax():
     saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
     baseline_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/baseline_controllers/baseline2.pkl'
-    repeats = 5
+    repeats = 1
     episodes = 1200
-    taus = [0.01, 0.02, 0.04]
-    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_01',
+    taus = [0.005, 0.01, 0.02, 0.04]
+    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_005',
+                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_01',
                 '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_02',
                 '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_04']
-    save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_01'
     for tau_ind in range(len(taus)):
         tau = taus[tau_ind]
         save_folder = folders[tau_ind]
