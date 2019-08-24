@@ -13,7 +13,7 @@ def plot_human_cost_sliding_window(folders, method_names, num_episodes = 500, co
     max_episodes = num_episodes
     human_demo_cost = 1.0
     failure_cost = cost_failure
-    colors = "rkcmgy"
+    colors = "rkcmgyb"
     window_half_width = 20
 
     for folder_ind in range(len(folders)):

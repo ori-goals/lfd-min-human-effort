@@ -98,14 +98,36 @@ def human_learner_baseline_mab():
                 case_count += 1
             sim.save_simulation(save_folder)
 
+def human_learner_baseline_ncb():
+    saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
+    baseline_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/baseline_controllers/baseline2.pkl'
+    repeats = 5
+    episodes = 1200
+    alphas = [1.0]
+    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_ncb/alpha_1_0']
+    for alpha_ind in range(len(alphas)):
+        alpha = alphas[alpha_ind]
+        save_folder = folders[alpha_ind]
+        for i in range(repeats):
+            sim = Simulation(alpha=alpha)
+            sim.add_controllers({'ddpg':{}, 'baseline':{'file':baseline_file}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
+            case_name = 'final_cases'
+            case_count = 0
+            for case_number in np.random.choice(episodes, episodes, replace=False):
+                sim.run_new_episode(case_name, case_number, switching_method = 'non_contextual_bandit')
+                episode_complete()
+                if (case_count + 1) % 100 == 0:
+                    sim.save_simulation(save_folder)
+                case_count += 1
+            sim.save_simulation(save_folder)
 
 def human_then_learner():
-    human_episodes = [400, 300, 200]
+    human_episodes = [200, 300, 400]
     episodes = 1200
     repeats = 1
-    save_folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/400demos',
+    save_folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/200demos',
                     '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/300demos',
-                    '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/200demos']
+                    '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/400demos']
     saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
     for ind in range(len(human_episodes)):
         num_human_episodes = human_episodes[ind]
@@ -129,7 +151,8 @@ def human_then_learner():
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate')
     #human_learner_mab()
-    #uman_then_learner()
+    #human_then_learner()
     #train_baseline()
     #baseline_only()
-    human_learner_baseline_mab()
+    #human_learner_baseline_mab()
+    human_learner_baseline_ncb()

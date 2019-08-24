@@ -27,6 +27,11 @@ class Simulation(object):
         self.alpha = alpha
         self.episode_number = 0
         self.block_num = 0
+        self.ncb_window = []
+        self.baseline_window = []
+        self.ncb_window_size = 50
+        self.tau = 0
+        self.delta_tau = 0.01
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
         rospy.wait_for_service('/gazebo/get_world_properties')
@@ -39,6 +44,9 @@ class Simulation(object):
         controller = self.choose_controller(switching_method, controller_type)
         episode, dense_reward = controller.run_episode(case_name, case_number)
         self.all_runs.append(episode)
+        self.ncb_window.insert(0, {'controller_type': episode.controller_type, 'result':episode.result})
+        if episode.controller_type == 'baseline':
+            self.baseline_window.insert(0, {'controller_type': episode.controller_type, 'result':episode.result})
         self.episode_number += 1
         print('RL buffer size: %g, Demo buffer size: %g' % (self.controllers['ddpg'].replay_buffer.count(), self.controllers['joystick_teleop'].replay_buffer.count()))
         return episode, dense_reward
@@ -137,6 +145,70 @@ class Simulation(object):
                 print('%15s: conf %.4f, sigma %.4f, ucb %.4f' %
                     (controller.type, confidence, sigma, ucb))
             return chosen_controller
+
+        elif switching_method == 'non_contextual_bandit':
+            self.ncb_window = self.ncb_window[0:self.ncb_window_size]
+            max_ucb = 0.
+            for type, controller in self.controllers.items():
+                successes = 0.
+                failures = 0.
+                if type == 'baseline':
+                    window = self.baseline_window
+                else:
+                    window = self.ncb_window
+                for entry in window:
+                    if entry['controller_type'] == type:
+                        if entry['result']:
+                            successes += 1.
+                        else:
+                            failures += 1.
+                alpha = controller.experience.prior_alpha + successes
+                beta = controller.experience.prior_beta + failures
+                mean = alpha/(alpha + beta)
+                var = alpha*beta/((alpha+beta)**2*(alpha+beta+1.0))
+                sigma = np.sqrt(var)
+
+                if 'teleop' in type:
+                    ucb = self.success_reward - self.demo_cost
+                else:
+                    ucb = (mean + self.alpha*sigma)*self.success_reward
+                print('%15s: conf %.4f, sigma %.4f, ucb %.4f' %
+                    (type, mean, sigma, ucb))
+                if ucb > max_ucb:
+                    chosen_controller = controller
+                    max_ucb = ucb
+            return chosen_controller
+        elif switching_method == 'softmax':
+            types = []
+            vals = []
+            for type, controller in self.controllers.items():
+                successes = 0.
+                failures = 0.
+                if type == 'baseline':
+                    window = self.baseline_window
+                else:
+                    window = self.ncb_window
+                for entry in window:
+                    if entry['controller_type'] == type:
+                        if entry['result']:
+                            successes += 1.
+                        else:
+                            failures += 1.
+                mean = successes/(successes+failures)
+                if 'teleop' in type:
+                    val = self.success_reward - self.demo_cost
+                else:
+                    val = (mean)*self.success_reward
+                types.append(type)
+                vals.append(np.exp(self.tau*val))
+            probs = np.array(vals)/np.sum(vals)
+            type = np.random.choice(types, p = probs)
+            print('Tau = %.4f' % (self.tau))
+            print(types)
+            print(probs)
+            print('\n')
+            self.tau += self.delta_tau
+            return self.controllers[type]
 
     def spawn_table(self):
         rospy.wait_for_service('/gazebo/get_world_properties')
