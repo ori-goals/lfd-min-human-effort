@@ -121,6 +121,32 @@ def human_learner_baseline_ncb():
                 case_count += 1
             sim.save_simulation(save_folder)
 
+def human_learner_baseline_softmax():
+    saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
+    baseline_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/baseline_controllers/baseline2.pkl'
+    repeats = 5
+    episodes = 1200
+    taus = [0.01, 0.02, 0.04]
+    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_01',
+                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_02',
+                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_04']
+    save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_01'
+    for tau_ind in range(len(taus)):
+        tau = taus[tau_ind]
+        save_folder = folders[tau_ind]
+        for i in range(repeats):
+            sim = Simulation(delta_tau = tau)
+            sim.add_controllers({'ddpg':{}, 'baseline':{'file':baseline_file}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
+            case_name = 'final_cases'
+            case_count = 0
+            for case_number in np.random.choice(episodes, episodes, replace=False):
+                sim.run_new_episode(case_name, case_number, switching_method = 'softmax')
+                episode_complete()
+                if (case_count + 1) % 100 == 0:
+                    sim.save_simulation(save_folder)
+                case_count += 1
+            sim.save_simulation(save_folder)
+
 def human_then_learner():
     human_episodes = [200, 300, 400]
     episodes = 1200
@@ -155,4 +181,4 @@ if __name__ == "__main__" :
     #train_baseline()
     #baseline_only()
     #human_learner_baseline_mab()
-    human_learner_baseline_ncb()
+    human_learner_baseline_softmax()

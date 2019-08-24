@@ -15,7 +15,7 @@ from gazebo_msgs.srv import *
 from learn_to_manipulate.controller import *
 
 class Simulation(object):
-    def __init__(self, alpha, file_path = None):
+    def __init__(self, alpha=0.0, delta_tau=0.0, file_path = None):
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
         self.block_width = 0.04
         self.goal_width_x = 0.001
@@ -31,7 +31,7 @@ class Simulation(object):
         self.baseline_window = []
         self.ncb_window_size = 50
         self.tau = 0
-        self.delta_tau = 0.01
+        self.delta_tau = delta_tau
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
         rospy.wait_for_service('/gazebo/get_world_properties')
@@ -194,7 +194,7 @@ class Simulation(object):
                             successes += 1.
                         else:
                             failures += 1.
-                mean = successes/(successes+failures)
+                mean = successes/(successes+failures+1e-6)
                 if 'teleop' in type:
                     val = self.success_reward - self.demo_cost
                 else:
