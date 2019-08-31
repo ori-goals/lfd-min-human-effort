@@ -15,7 +15,7 @@ from gazebo_msgs.srv import *
 from learn_to_manipulate.controller import *
 
 class Simulation(object):
-    def __init__(self, alpha=0.0, delta_tau=0.0, file_path = None):
+    def __init__(self, alpha=0.0, delta_tau=0.0, max_demos = float('inf'), file_path = None):
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
         self.block_width = 0.04
         self.goal_width_x = 0.001
@@ -26,6 +26,7 @@ class Simulation(object):
         self.failure_reward = 0.0
         self.alpha = alpha
         self.episode_number = 0
+        self.max_demos = max_demos
         self.block_num = 0
         self.ncb_window = []
         self.baseline_window = []
@@ -48,7 +49,7 @@ class Simulation(object):
         if episode.controller_type == 'baseline':
             self.baseline_window.insert(0, {'controller_type': episode.controller_type, 'result':episode.result})
         self.episode_number += 1
-        print('RL buffer size: %g, Demo buffer size: %g' % (self.controllers['ddpg'].replay_buffer.count(), self.controllers['joystick_teleop'].replay_buffer.count()))
+        #print('RL buffer size: %g, Demo buffer size: %g' % (self.controllers['ddpg'].replay_buffer.count(), self.controllers['joystick_teleop'].replay_buffer.count()))
         return episode, dense_reward
 
     @classmethod
@@ -142,8 +143,11 @@ class Simulation(object):
                 if ucb > max_ucb:
                     chosen_controller = controller
                     max_ucb = ucb
-                print('%15s: conf %.4f, sigma %.4f, ucb %.4f' %
-                    (controller.type, confidence, sigma, ucb))
+                #print('%15s: conf %.4f, sigma %.4f, ucb %.4f' %
+                    #(controller.type, confidence, sigma, ucb))
+            if 'teleop' in chosen_controller.type:
+                if chosen_controller.episode_number >= self.max_demos:
+                    chosen_controller = self.controllers['ddpg']
             return chosen_controller
 
         elif switching_method == 'non_contextual_bandit':

@@ -86,7 +86,9 @@ class Controller(object):
         move_arm_initial(self)
 
     def run_episode(self, case_name, case_number):
-        print("Starting episode %d with controller type: %s" % (self.sim.episode_number, self.type))
+        #print("Starting episode %d with controller type: %s" % (self.sim.episode_number, self.type))
+
+        print('Taking autonomous control!')
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
         episode_running = True
@@ -483,7 +485,8 @@ class SavedDDPGAgent(Controller):
             self.check_for_controllers()
             self.checked_for_controllers = True
 
-        print("Starting episode %d with controller type: %s" % (self.sim.episode_number, self.type))
+        #print("Starting episode %d with controller type: %s" % (self.sim.episode_number, self.type))
+        print('Taking autonomous control!')
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
         episode_running = True

@@ -63,7 +63,7 @@ class Experience(object):
         self.replay_buffer_episodes.insert(0, episode)
         if self.window_size != float('inf'):
             self.replay_buffer_episodes = self.replay_buffer_episodes[0:self.window_size]
-        print('There are %i demo episodes in the window' %(self.replay_buffer_episodes.count('demo_episode')))
+        #print('There are %i demo episodes in the window' %(self.replay_buffer_episodes.count('demo_episode')))
 
         # construct the replay buffer for learner from the window of experience
         self.replay_buffer = pd.DataFrame(columns = self.col_names)

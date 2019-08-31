@@ -4,16 +4,44 @@ from os.path import isfile, join
 import pickle
 import numpy as np
 import pandas as pd
+from learn_to_manipulate.experience import Episode
+from matplotlib import rcParams
+rcParams['font.family'] = 'sans-serif'
+rcParams['font.sans-serif'] = ['Tahoma', 'DejaVu Sans',
+                               'Lucida Grande', 'Verdana']
+
+def create_short_files(folders):
+
+    for folderind in range(len(folders)):
+        folder_path = folders[folderind]
+        old_file_paths = [join(folder_path, f) for f in listdir(folder_path) if isfile(join(folder_path, f))]
+        new_file_paths = [join('/short_files', f) for f in listdir(folder_path) if isfile(join(folder_path, f))]
+        for fileind in range(len(old_file_paths)):
+            file_path = old_file_paths[fileind]
+            new_file_path = new_file_paths[fileind]
+            file = open(file_path, 'rb')
+            data_list, controller_save_info = pickle.load(file)
+            new_data_list = []
+            for old_episode in data_list:
+                new_episode = Episode(df = [], controller_type = old_episode.controller_type,
+                    confidence = old_episode.confidence, sigma = old_episode.sigma, result = old_episode.result,
+                    failure_mode = old_episode.failure_mode, case_number = old_episode.case_number, case_name = old_episode.case_name,
+                    dense_reward = old_episode.dense_reward)
+                new_data_list.append(new_episode)
+            with open(folder_path + new_file_path, 'w') as f:
+                pickle.dump([new_data_list, []], f)
+                f.close
 
 def plot_human_cost_sliding_window(folders, method_names, num_episodes = 500, cost_failure=5.0):
     plt.close("all")
-    plt.rcParams.update({'font.size': 14})
+    plt.rcParams.update({'font.size': 24})
+    plt.rc('font',family='Times New Roman')
 
     # make sure this is correct!
     max_episodes = num_episodes
     human_demo_cost = 1.0
     failure_cost = cost_failure
-    colors = "rkcmgyb"
+    colors = "rkbcmg"
     window_half_width = 20
 
     for folder_ind in range(len(folders)):
@@ -25,6 +53,7 @@ def plot_human_cost_sliding_window(folders, method_names, num_episodes = 500, co
 
         for file_path_index in range(len(files)):
             file_path = files[file_path_index]
+            #print(file_path)
             file = open(file_path, 'rb')
             total_cost = 0.0
             sliding_window_mean_costs = []
@@ -59,13 +88,14 @@ def plot_human_cost_sliding_window(folders, method_names, num_episodes = 500, co
             file_path_index += 1
         print('Method %s, mean cost %4f, std dev %4f' % (method_names[folder_ind], np.mean(total_cost_list), np.std(total_cost_list)))
         plt.plot(range(len(cost_means)), cost_means, colors[folder_ind], linewidth = 3.0,  label = method_names[folder_ind])
-        plt.fill_between(range(len(cost_means)), cost_means-cost_stddevs, cost_means+cost_stddevs, color = colors[folder_ind], alpha=.1)
-    plt.xlabel("episodes")
-    plt.ylabel("cost per episode")
-    plt.ylim([0.0, failure_cost-1.0])
+        #plt.fill_between(range(len(cost_means)), cost_means-cost_stddevs, cost_means+cost_stddevs, color = colors[folder_ind], alpha=.1)
+    plt.xlabel("Episode")
+    plt.ylabel(r"$c_h$", fontsize=28, rotation=0, labelpad=20)
+    plt.ylim([0.0, failure_cost-2.0])
     plt.xlim([0.0, float(max_episodes)])
     plt.legend()
-    plt.title("sliding window of mean cost per episode")
+    plt.grid()
+    #plt.title("sliding window of mean cost per episode")
     plt.show()
 
 def plot_ddpg_success_rate(folders, method_names, max_episodes = 500):
@@ -200,6 +230,8 @@ def plot_relative_usage(folder_path, num_episodes):
     baseline_usage_array = np.zeros([len(file_paths), num_episodes])
     agent_usage_array = np.zeros([len(file_paths), num_episodes])
     file_path_index = 0
+    human_counts = []
+    baseline_counts = []
 
     for file_path in file_paths:
         file = open(file_path, 'rb')
@@ -256,7 +288,8 @@ def plot_relative_usage(folder_path, num_episodes):
 
         file_path_index += 1
         print('Teleop episodes: %i, Baseline episodes: %i, Agent episodes: %i' % (human_count, baseline_count, agent_count))
-
+        human_counts.append(human_count)
+        baseline_counts.append(baseline_count)
 
     human_usage_stddevs = np.std(human_usage_array, axis=0)
     baseline_usage_stddevs = np.std(baseline_usage_array, axis=0)
@@ -265,7 +298,12 @@ def plot_relative_usage(folder_path, num_episodes):
     human_usage_means = np.mean(human_usage_array, axis=0)
     baseline_usage_means = np.mean(baseline_usage_array, axis=0)
     agent_usage_means = np.mean(agent_usage_array, axis=0)
-
+    print('Human')
+    print(np.mean(np.array(human_counts)))
+    print(np.std(np.array(human_counts)))
+    print('Baseline')
+    print(np.mean(np.array(baseline_counts)))
+    print(np.std(np.array(baseline_counts)))
     plt.plot(range(len(human_usage_means)), human_usage_means, "k", linewidth = 3.0,  label = "human")
     plt.fill_between(range(len(human_usage_means)), human_usage_means-human_usage_stddevs, human_usage_means+human_usage_stddevs, color = "k", alpha=.1)
 
@@ -288,7 +326,7 @@ def all_episodes_to_single_dataframe(all_runs):
         dataframe = pd.concat([dataframe, episode.episode_df], ignore_index=True)
     return dataframe
 
-def plot_length_param_estimation(known_episodes_file_path, unknown_episodes_file_path):
+def plot_length_param_estimation(known_episodes_file_path, unknown_episodes_file_path, n_buffer = 100):
 
     plt.close("all")
     plt.rcParams.update({'font.size': 20})
@@ -297,10 +335,11 @@ def plot_length_param_estimation(known_episodes_file_path, unknown_episodes_file
     unknown_episodes_file = open(unknown_episodes_file_path, 'rb')
 
     all_runs_known, controller_save_info  = pickle.load(known_episodes_file)
+    all_runs_known = all_runs_known[0:n_buffer]
     all_runs_unknown, controller_save_info  = pickle.load(unknown_episodes_file)
     known_replay_buffer = all_episodes_to_single_dataframe(all_runs_known)
 
-    n_length_param = 50
+    n_length_param = 30
     length_parameters = np.logspace(-2.0, 2.0, num=n_length_param)
     print(length_parameters)
     log_likelihoods = np.zeros(len(length_parameters))

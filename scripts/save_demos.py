@@ -6,10 +6,10 @@ import rospy
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate')
     sim = Simulation(alpha = 0.5)
-    sim.add_controllers({'joystick_teleop':{}})
+    sim.add_controllers({'joystick_teleop':{}, 'ddpg':{}})
 
     case_name = 'final_cases'
     for case_number in range(1000, 1530):
-        sim.run_new_episode(case_name, case_number, controller_type = 'joystick_teleop')
+        sim.run_new_episode(case_name, case_number, switching_method = 'contextual_bandit')
         if (case_number > 1020) and (case_number+1) % 20 == 0:
             sim.save_simulation('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/demonstrations')
