@@ -43,5 +43,5 @@ if __name__ == "__main__" :
 
 
         if (i-14) % 15 == 0:    # print every print_every episodes
-            #subplot(sim.controllers['ddpg'])
+            subplot(sim.controllers['ddpg'])
             pass

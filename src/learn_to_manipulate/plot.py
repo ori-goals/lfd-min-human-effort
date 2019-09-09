@@ -9,6 +9,7 @@ from matplotlib import rcParams
 rcParams['font.family'] = 'sans-serif'
 rcParams['font.sans-serif'] = ['Tahoma', 'DejaVu Sans',
                                'Lucida Grande', 'Verdana']
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 def create_short_files(folders):
 
@@ -18,6 +19,7 @@ def create_short_files(folders):
         new_file_paths = [join('/short_files', f) for f in listdir(folder_path) if isfile(join(folder_path, f))]
         for fileind in range(len(old_file_paths)):
             file_path = old_file_paths[fileind]
+            print(file_path)
             new_file_path = new_file_paths[fileind]
             file = open(file_path, 'rb')
             data_list, controller_save_info = pickle.load(file)
@@ -41,7 +43,7 @@ def plot_human_cost_sliding_window(folders, method_names, num_episodes = 500, co
     max_episodes = num_episodes
     human_demo_cost = 1.0
     failure_cost = cost_failure
-    colors = "rkbcmg"
+    colors = "mkcrbg"
     window_half_width = 20
 
     for folder_ind in range(len(folders)):
@@ -53,7 +55,7 @@ def plot_human_cost_sliding_window(folders, method_names, num_episodes = 500, co
 
         for file_path_index in range(len(files)):
             file_path = files[file_path_index]
-            #print(file_path)
+            print(file_path)
             file = open(file_path, 'rb')
             total_cost = 0.0
             sliding_window_mean_costs = []
@@ -106,7 +108,7 @@ def plot_ddpg_success_rate(folders, method_names, max_episodes = 500):
     human_demo_cost = 1.0
     failure_cost = 3.0
     colors = "rkcm"
-    window_half_width = 20
+    window_half_width = 25
 
     for folder_ind in range(len(folders)):
         folder_path = folders[folder_ind]
@@ -148,8 +150,8 @@ def plot_ddpg_success_rate(folders, method_names, max_episodes = 500):
 
         plt.plot(range(len(success_means)), success_means, colors[folder_ind], linewidth = 3.0,  label = method_names[folder_ind])
         plt.fill_between(range(len(success_means)), success_means-success_stddevs, success_means+success_stddevs, color = colors[folder_ind], alpha=.1)
-    plt.xlabel("episodes")
-    plt.ylabel("success rate sliding window")
+    plt.xlabel(r"$C_l$ Episode")
+    plt.ylabel("Success Rate")
     plt.ylim([0.0, 1.0])
     plt.xlim([0.0, float(max_episodes)])
     plt.legend()

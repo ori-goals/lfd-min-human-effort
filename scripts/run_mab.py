@@ -6,12 +6,31 @@ import logging
 import numpy as np
 import os
 
-def  episode_complete():
+def episode_complete():
     my_path = os.path.abspath(os.path.dirname(__file__))
     my_path = os.path.join(my_path, "../scripts/.run_completed.txt")
     file = open(my_path,"w")
     file.close()
 
+def subplot(contr, case_count):
+    r = list(zip(*contr.agent.plot_average_rewards))
+    r2 = list(zip(*contr.agent.plot_reward))
+    p = list(zip(*contr.agent.plot_policy))
+    q = list(zip(*contr.agent.plot_q))
+    s = list(zip(*contr.agent.plot_steps))
+
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(15,15))
+
+    ax[0, 0].plot(list(r[1]), list(r[0]), 'k', linewidth = 2.5) #row=0, col=0
+    ax[0, 0].plot(list(r2[1]), list(r2[0]), 'r') #row=0, col=0
+    ax[1, 0].plot(list(p[1]), list(p[0]), 'b') #row=1, col=0
+    ax[0, 1].plot(list(q[1]), list(q[0]), 'g') #row=0, col=1
+    ax[1, 1].plot(list(s[1]), list(s[0]), 'k') #row=1, col=1
+    ax[0, 0].title.set_text('Reward')
+    ax[1, 0].title.set_text('Policy loss')
+    ax[0, 1].title.set_text('Q loss')
+    ax[1, 1].title.set_text('Max steps')
+    plt.savefig('run' + str(case_count) + '.png')
 
 def baseline_only():
     repeats = 5
@@ -170,12 +189,31 @@ def human_then_learner():
                 episode_complete()
             sim.save_simulation(save_folder)
 
+def rl_only():
+    episodes = 1200
+    repeats = 20
+    saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
+    save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/rl_only/noise_factor_1_0'
+    for i in range(repeats):
+        sim = Simulation(alpha=0.0) # alpha doesn't matter
+        sim.add_controllers({'ddpg':{}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
+        case_name = 'final_cases'
+        case_count = 0
+        for case_number in np.random.choice(episodes, episodes, replace=False):
+            sim.run_new_episode(case_name, case_number, controller_type = 'ddpg')
+            if (case_count + 1) % 100 == 0:
+                sim.save_simulation(save_folder)
+                subplot(sim.controllers['ddpg'], case_count)
+            case_count += 1
+            episode_complete()
+        sim.save_simulation(save_folder)
+
 def limited_demos_human_then_learner():
     num_human_episodes = 150
     demos_avail = 1200
-    num_total_episodes = 2405
+    num_total_episodes = 1605
     saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
-    save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/human150_then_learner'
+    save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/human150_then_learner_eps_0'
     sim = Simulation(alpha=0.0) # alpha doesn't matter
     sim.add_controllers({'ddpg':{}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
     case_name = 'final_cases'
@@ -194,7 +232,7 @@ def limited_demos_human_then_learner():
 def human_learner_mab_limited_demos():
     num_human_episodes = 150
     demos_avail = 1200
-    num_total_episodes = 2405
+    num_total_episodes = 2205
     saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
     save_folder = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/mab_alpha_2_0'
     sim = Simulation(alpha=2.0, max_demos=150)
@@ -211,8 +249,8 @@ def human_learner_mab_limited_demos():
 
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate')
-    #limited_demos_human_then_learner()
-    human_learner_mab_limited_demos()
+    #baseline_only()
+    limited_demos_human_then_learner()
     #human_learner_mab()
     #human_then_learner()
     #human_learner_baseline_mab()

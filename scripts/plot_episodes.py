@@ -8,12 +8,15 @@ def plot_length_param():
     plot_length_param_estimation(known_episodes_file, unknown_episodes_file, n_buffer=50)
 
 def plot_rel_use():
-    plot_relative_usage('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_02/short_files', 1200)
+    plot_relative_usage('/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/mab_alpha_2_0/short_files', 1350)
 
 def plot_success_rate():
-    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/human150_then_learner']
-    methods = ['alpha = 1.0', 'alpha = 0.5', 'alpha = 2.0']
-    plot_ddpg_success_rate(folders, methods, 2200)
+    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/mab_alpha_2_0/short_files',
+                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/human150_then_learner/short_files',
+                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/human150_then_learner_eps_0/short_files',
+                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/rl_only/noise_factor_1_0/short_files']
+    methods = ['alpha 2', 'human 150 then learner', 'human 150 then learner eps 0', 'rl only']
+    plot_ddpg_success_rate(folders, methods, 1200)
 
 
 def plot_baseline_rate():
@@ -29,9 +32,9 @@ def plot_human_cost():
                 '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/400demos/short_files',
                 '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_01/short_files']
 
-    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/200demos/short_files',
-                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/300demos/short_files',
-                '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/400demos/short_files']
+    #folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/200demos/short_files',
+    #            '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/300demos/short_files',
+    #            '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_then_learner/400demos/short_files']
     #folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_1_0']
 
     #folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_ncb/alpha_1_0',
@@ -45,18 +48,21 @@ def plot_human_cost():
     #folders =  ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_0_3',
     #            '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_1_0',
     #            '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_2_0']
+    #folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/rl_only/single_file']
     methods = [r'$\it{contextual\ bandit\ (\alpha = 0.5)}$', r'$\it{contextual\ bandit\ (\alpha = 1)}$', r'$\it{contextual\ bandit\ (\alpha = 2)}$',
-                r'$\it{contextual\ bandit\ w.\ baseline\ (\alpha = 1)}$', r'$\it{human\ then\ learner\ (n_h = 400)}$', r'$\it{Boltzmann\ (\tau=0.01)}$', '', '', '']
+                r'$\it{contextual\ bandit\ w.\ baseline\ (\alpha = 1)}$', r'$\it{human\ then\ learner\ (n_h = 400)}$', r'$\it{Boltzmann\ (\Delta \tau=0.002)}$', 'rl only', '', '']
+    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/rl_only']
     plot_human_cost_sliding_window(folders, methods, num_episodes = 1200, cost_failure = 5.0)
 
 def shorten_files():
-    folders =  ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_baseline_softmax/dtau_0_01']
+    folders =  ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/limited_demos/human150_then_learner_eps_0']
     create_short_files(folders)
 
 if __name__ == "__main__" :
     #shorten_files()
+    #shorten_files()
     #plot_length_param()
-    #plot_rel_use()
+    plot_rel_use()
     #plot_baseline_rate()
     #plot_human_cost()
     plot_success_rate()

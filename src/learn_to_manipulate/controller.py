@@ -556,6 +556,7 @@ class SavedDDPGAgent(Controller):
 
         if not controller_found:
             sys.exit('Controller type %s not found in file %s.' % (type, file))
+        file.close()
         return agent
 
     def get_action(self, state, step):
