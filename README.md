@@ -8,7 +8,7 @@ Gazebo 7 or higher, ROS Kinetic.
 
 1. Copy the learn_to_manipulate package into your catkin workspace.
 
-2. In learn_to_manipulate/models there is a folder called hokuyo_mod which is modified laser model with a lower number of beams and limited arm. Gazebo needs to be able to find and load this model. The easiest way to achieve this is to copy the hokuyo_mod folder in this directory onto your computer: /home/username/.gazebo/models
+2. In learn_to_manipulate/models there is a folder called hokuyo_mod which is modified laser model with a lower number of beams and limited arc. Gazebo needs to be able to find and load this model. The easiest way to achieve this is to copy the hokuyo_mod folder in this directory onto your computer: /home/username/.gazebo/models
 
 3. Install packages for controlling the robot arm:
 
