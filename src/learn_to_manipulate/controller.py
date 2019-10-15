@@ -18,7 +18,6 @@ from gazebo_msgs.msg import *
 from gazebo_msgs.srv import *
 from sensor_msgs.msg import Joy
 from torch import nn
-from learn_to_manipulate.actor_nn import ActorNN
 from learn_to_manipulate.experience import Experience
 from learn_to_manipulate.utils import qv_rotate
 from learn_to_manipulate.ddpg import DDPGAgent

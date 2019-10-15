@@ -6,7 +6,7 @@ import numpy as np
 
 def run_experiment():
     """ Experiment to first give 200 demonstrations followed by
-    reinforcement learning
+    reinforcement learning. Should be quite competent after 600 total episodes.
     """
     saved_controller_file = 'demo_final_cases_0_1399.pkl'
     num_human_episodes = 200
