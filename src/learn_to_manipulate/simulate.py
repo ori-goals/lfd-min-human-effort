@@ -118,7 +118,9 @@ class Simulation(object):
             elif type == 'ddpg':
                 controller_dict[type] = DDPGController(self)
             elif type == 'saved_teleop':
-                controller_dict[mydict['type']] = SavedTeleopController(self, mydict['file'], mydict['type'])
+                  my_path = os.path.abspath(os.path.dirname(__file__))
+                  load_path = os.path.join(my_path, '../../config/demos/' + mydict['file'])
+                  controller_dict[mydict['type']] = SavedTeleopController(self, load_path, mydict['type'])
             elif type == 'baseline':
                 controller_dict['baseline'] = SavedDDPGAgent(self, mydict['file'])
         self.controllers = controller_dict

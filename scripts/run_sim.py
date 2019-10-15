@@ -2,46 +2,29 @@
 from learn_to_manipulate.simulate import Simulation
 import matplotlib.pyplot as plt
 import rospy
-import logging
+import numpy as np
 
-
-def subplot(contr):
-    r = list(zip(*contr.agent.plot_average_rewards))
-    r2 = list(zip(*contr.agent.plot_reward))
-    p = list(zip(*contr.agent.plot_policy))
-    q = list(zip(*contr.agent.plot_q))
-    s = list(zip(*contr.agent.plot_steps))
-
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(15,15))
-
-    ax[0, 0].plot(list(r[1]), list(r[0]), 'k', linewidth = 2.5) #row=0, col=0
-    ax[0, 0].plot(list(r2[1]), list(r2[0]), 'r') #row=0, col=0
-    ax[1, 0].plot(list(p[1]), list(p[0]), 'b') #row=1, col=0
-    ax[0, 1].plot(list(q[1]), list(q[0]), 'g') #row=0, col=1
-    ax[1, 1].plot(list(s[1]), list(s[0]), 'k') #row=1, col=1
-    ax[0, 0].title.set_text('Reward')
-    ax[1, 0].title.set_text('Policy loss')
-    ax[0, 1].title.set_text('Q loss')
-    ax[1, 1].title.set_text('Max steps')
-    plt.savefig('run.png')
+def run_experiment():
+    """ Experiment to first give 200 demonstrations followed by
+    reinforcement learning
+    """
+    saved_controller_file = 'demo_final_cases_0_1399.pkl'
+    num_human_episodes = 200
+    total_episodes = 1000
+    save_folder = ''
+    sim = Simulation() # alpha doesn't matter
+    sim.add_controllers({'ddpg':{'eps':0.02}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
+    case_name = 'final_cases'
+    case_count = 0
+    for case_number in np.random.choice(total_episodes, total_episodes, replace=False):
+        if case_count < num_human_episodes:
+            sim.run_new_episode(case_name, case_number, controller_type = 'joystick_teleop')
+        else:
+            sim.run_new_episode(case_name, case_number, controller_type = 'ddpg')
+        case_count += 1
+    sim.save_simulation(save_folder)
 
 
 if __name__ == "__main__" :
-
-
-
     rospy.init_node('learn_to_manipulate', log_level=rospy.ERROR)
-    sim = Simulation(alpha=0.3)
-    #saved_controller_file = '/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/initial_tests/similar_cases_teleop.pkl'
-    sim.add_controllers({'ddpg':{}, 'joystick_teleop':{}})
-
-    case_name = 'harder_rl_attempt_aug11'
-    dense_rewards = []
-    results = []
-    for i in range(5):
-        episode, dense_reward = sim.run_new_episode(case_name, i, controller_type = 'joystick_teleop')
-
-
-        if (i-14) % 15 == 0:    # print every print_every episodes
-            subplot(sim.controllers['ddpg'])
-            pass
+    run_experiment()
