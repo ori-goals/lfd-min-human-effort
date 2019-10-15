@@ -86,9 +86,9 @@ class Controller(object):
         move_arm_initial(self)
 
     def run_episode(self, case_name, case_number):
-        #print("Starting episode %d with controller type: %s" % (self.sim.episode_number, self.type))
+        """ Run an episode with this controller.
+        """
 
-        print('Taking autonomous control!')
         self.current_pose = copy.copy(self.init_pose)
         self.begin_new_episode(case_name, case_number)
         episode_running = True
@@ -112,6 +112,12 @@ class Controller(object):
         return episode, dense_reward
 
     def add_to_memory(self, state, action, reward, new_state, terminal):
+        """ Stores an experience tuple.
+
+        The tuple is stored both in the replay buffer which is used for the
+        DDPG learning, and the experience class which gives
+        confidence estimates.
+        """
         new_state_norm = self.to_normalised_state(new_state)
         state_norm = self.to_normalised_state(state)
         action_norm = self.to_normalised_action(action)
@@ -142,6 +148,8 @@ class Controller(object):
             print('Episode failed by %s. The dense reward was %.4f\n' % (result['failure_mode'], dense_reward))
 
     def check_episode_status(self, step):
+        """ Checks whether an episode has ended or is still running.
+        """
         episode_running = True
 
         world = self.get_world_properties_prox()
@@ -204,6 +212,9 @@ class Controller(object):
 
 
     def store_laser(self, data):
+        """ Stores the value from the laser sensor. The range is limited to a
+        maximum of 1m.
+        """
         scan = np.array(data.ranges)
         range_max = 1.0
         indexes = scan > range_max
@@ -214,6 +225,9 @@ class Controller(object):
         return np.array(self.current_laser_scan.tolist() + [self.current_pose['x'], self.current_pose['y']])
 
     def execute_action(self, action, step):
+        """ Moves the arm the commanded amount.
+        """
+
         world = self.get_world_properties_prox()
         for name in world.model_names:
             if 'block' in name:
@@ -263,6 +277,9 @@ class Controller(object):
 
 
     def get_dense_reward(self, old_block_pose, new_block_pose, result):
+        """ Calculates the reward at this step. There is a small reward for
+        moving the block forwards and a large reward for succeeding.
+        """
         targ = np.array([self.sim.goal_centre_x + 10.0, 0.0])
         old = np.array([old_block_pose.position.x, old_block_pose.position.y])
         new = np.array([new_block_pose.position.x, new_block_pose.position.y])
@@ -275,6 +292,8 @@ class Controller(object):
         return reward
 
     def go_to_pose(self, pose):
+        """ Sends command to robot arm.
+        """
         pose_goal = geometry_msgs.msg.Pose()
         pose_goal.orientation.x = pose['qx']
         pose_goal.orientation.y = pose['qy']
@@ -292,21 +311,29 @@ class Controller(object):
         return confidence, sigma
 
     def to_state(self, state):
+        """ Unnormalises state from (-1,1) to actual state range.
+        """
         state_k = (self.states_high - self.states_low)/ 2.
         state_b = (self.states_high + self.states_low)/ 2.
         return state_k * state + state_b
 
     def to_action(self, action):
+        """ Unnormalises action from (-1,1) to actual state range.
+        """
         act_k = (self.actions_high - self.actions_low)/ 2.
         act_b = (self.actions_high + self.actions_low)/ 2.
         return act_k * action + act_b
 
     def to_normalised_state(self, state):
+        """ Normalises state to (-1, 1)
+        """
         state_k_inv = 2./(self.states_high - self.states_low)
         state_b = (self.states_high + self.states_low)/ 2.
         return state_k_inv * (state - state_b)
 
     def to_normalised_action(self, action):
+        """ Normalises action to (-1, 1)
+        """
         act_k_inv = 2./(self.actions_high - self.actions_low)
         act_b = (self.actions_high + self.actions_low)/ 2.
         return act_k_inv * (action - act_b)
@@ -441,6 +468,8 @@ class DDPGController(Controller):
         self.teleop_controller = None
 
     def get_action(self, state, step):
+        """ Gets action from deterministic policy and adds exploration noise.
+        """
         state_norm = self.to_normalised_state(state)
         action_norm = self.agent.actor.get_action(state_norm)
         action_norm += self.agent.noise()*self.agent.noise_factor*self.agent.noise_decay**self.episode_number
@@ -454,6 +483,8 @@ class DDPGController(Controller):
                 self.teleop_controller = self.sim.controllers[contr_type]
 
     def update_agent(self):
+        """ Updates the actor and critic.
+        """
         if not self.checked_for_teleop:
             self.check_for_teleop()
 

@@ -35,6 +35,8 @@ class Simulation(object):
         self.delta_tau = delta_tau
 
     def run_new_episode(self, case_name, case_number, switching_method = None, controller_type = None):
+        """ Choose a controller and run an episode of simulation.
+        """
         rospy.wait_for_service('/gazebo/get_world_properties')
         get_world_properties_prox = rospy.ServiceProxy('/gazebo/get_world_properties', GetWorldProperties)
 
@@ -54,6 +56,8 @@ class Simulation(object):
 
     @classmethod
     def load_simulation(cls, file_path):
+        """ Load controllers from a previous simulation.
+        """
         sim =  cls()
 
         file = open(file_path,"rb")
@@ -75,6 +79,8 @@ class Simulation(object):
 
     @classmethod
     def generate_cases(cls, case_name, number, spec = None):
+        """ Randomly generate positions for the block.
+        """
         if spec is None:
             spec = {'min_y':-0.1, 'max_y':0.1, 'min_x':0.5, 'max_x':0.65,
                 'min_angle_deg':-60, 'max_angle_deg':60,
@@ -127,7 +133,11 @@ class Simulation(object):
 
 
     def choose_controller(self, switching_method = None, requested_type = None):
-
+        """ Choose controller for the episode. If the controller to use
+        is specified, uses that controller. Otherwise chooses controller acccording
+        to the specified switching method.
+        """
+        
         # if a controller type has been specified
         if requested_type is not None:
             for type, controller in self.controllers.items():
