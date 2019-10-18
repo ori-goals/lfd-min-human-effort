@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import hsrb_interface
 import rospy
 import tf
 import pickle
