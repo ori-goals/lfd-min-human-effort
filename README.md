@@ -2,7 +2,7 @@
 
 ### Prerequisites
 
-Gazebo 7 or higher, ROS Kinetic.
+Gazebo 7 or higher, ROS Kinetic, pytorch.
 
 ### Installation
 
