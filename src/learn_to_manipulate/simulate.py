@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import rospy
-import hsrb_interface
 import pickle
 import time
 import random
