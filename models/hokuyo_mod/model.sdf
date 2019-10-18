@@ -9,7 +9,7 @@
       <visual name="visual">
         <geometry>
           <mesh>
-            <uri>model://hokuyo/meshes/hokuyo.dae</uri>
+            <uri>model://hokuyo_mod/meshes/hokuyo.dae</uri>
           </mesh>
         </geometry>
       </visual>
