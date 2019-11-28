@@ -14,13 +14,13 @@ from gazebo_msgs.srv import *
 from learn_to_manipulate.controller import *
 
 class Simulation(object):
-    def __init__(self, alpha=0.0, delta_tau=0.0, max_demos = float('inf'), file_path = None):
+    def __init__(self, demo_cost = 0.2, alpha=0.0, delta_tau=0.0, max_demos = float('inf'), file_path = None):
         self.initial_pose_pub = rospy.Publisher('laser_2d_correct_pose', PoseWithCovarianceStamped, queue_size=10)
         self.block_width = 0.04
         self.goal_width_x = 0.001
         self.goal_centre_x = 0.65
         self.all_runs = []
-        self.demo_cost = 0.2
+        self.demo_cost = demo_cost
         self.success_reward = 1.0
         self.failure_reward = 0.0
         self.alpha = alpha
@@ -136,7 +136,7 @@ class Simulation(object):
         is specified, uses that controller. Otherwise chooses controller acccording
         to the specified switching method.
         """
-        
+
         # if a controller type has been specified
         if requested_type is not None:
             for type, controller in self.controllers.items():

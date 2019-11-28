@@ -72,29 +72,30 @@ def train_baseline():
     sim.save_simulation(save_folder)
 
 def human_learner_mab():
-    saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
-    repeats = 1
+    saved_controller_file = 'demo_final_cases_0_1399.pkl'
+    repeats = 10
+    demo_cost = 0.33
     episodes = 1200
-    alphas = [2.0]
-    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/alpha_2_0']
+    alphas = [1.0]
+    folders = ['/home/marcrigter/pCloudDrive/Development/LearnToManipulate/data/main_experiment/human_learner_mab/demo_cost_0_33/alpha_1_0']
     for alpha_ind in range(len(alphas)):
         alpha = alphas[alpha_ind]
         save_folder = folders[alpha_ind]
         for i in range(repeats):
-            sim = Simulation(alpha=alpha)
-            sim.add_controllers({'ddpg':{}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
+            sim = Simulation(alpha=alpha, demo_cost = demo_cost)
+            sim.add_controllers({'ddpg':{'eps':0.02}, 'saved_teleop':{'file':saved_controller_file, 'type':'joystick_teleop'}})
             case_name = 'final_cases'
             case_count = 0
             for case_number in np.random.choice(episodes, episodes, replace=False):
                 sim.run_new_episode(case_name, case_number, switching_method = 'contextual_bandit')
                 episode_complete()
-                if (case_count + 1) % 100 == 0:
+                if (case_count + 1) % 200 == 0:
                     sim.save_simulation(save_folder)
                 case_count += 1
             sim.save_simulation(save_folder)
 
 def human_learner_baseline_mab():
-    saved_controller_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/demos/demo_final_cases_0_1399.pkl'
+    saved_controller_file = 'demo_final_cases_0_1399.pkl'
     baseline_file = '/home/marcrigter/ros/learn_to_manipulate_ws/src/learn_to_manipulate/config/baseline_controllers/baseline2.pkl'
     repeats = 1
     episodes = 1200
@@ -250,8 +251,8 @@ def human_learner_mab_limited_demos():
 if __name__ == "__main__" :
     rospy.init_node('learn_to_manipulate')
     #baseline_only()
-    limited_demos_human_then_learner()
-    #human_learner_mab()
+    #limited_demos_human_then_learner()
+    human_learner_mab()
     #human_then_learner()
     #human_learner_baseline_mab()
     #human_learner_baseline_softmax()
