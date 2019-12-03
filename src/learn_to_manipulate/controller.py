@@ -150,10 +150,7 @@ class Controller(object):
         """
         episode_running = True
 
-        world = self.get_world_properties_prox()
-        for name in world.model_names:
-            if 'block' in name:
-                block_name = name
+        block_name = "block"
 
         resp = self.get_model_state_prox(block_name,'')
         while not resp.success:
@@ -226,10 +223,7 @@ class Controller(object):
         """ Moves the arm the commanded amount.
         """
 
-        world = self.get_world_properties_prox()
-        for name in world.model_names:
-            if 'block' in name:
-                block_name = name
+        block_name = "block"
 
         resp = self.get_model_state_prox(block_name,'')
         while not resp.success:
