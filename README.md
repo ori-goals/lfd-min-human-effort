@@ -26,7 +26,7 @@ export GAZEBO_MODEL_PATH=/path_to_this_package/models:$GAZEBO_MODEL_PATH
 
 ### Run the simulation
 
-roslaunch ur_gazebo ur5_joint_limited.launch  (launch gazebo)
+roslaunch ur_gazebo ur5_joint_limited.launch  (launch gazebo, gui:=false for headless)
 
 roslaunch ur5_moveit_config ur5_moveit_planning_execution.launch sim:=true limited:=true (launch planner for moving robot arm joints)
 

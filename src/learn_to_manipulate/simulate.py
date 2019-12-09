@@ -44,6 +44,7 @@ class Simulation(object):
         self.spawn_table()
         self.spawn_block(case_name, case_number)
         controller = self.choose_controller(switching_method, controller_type)
+	rospy.sleep(0.2)
         episode, dense_reward = controller.run_episode(case_name, case_number)
         self.all_runs.append(episode)
         self.ncb_window.insert(0, {'controller_type': episode.controller_type, 'result':episode.result})
@@ -311,9 +312,9 @@ class Simulation(object):
         get_model_state_prox = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
         succeeded = False
         while not succeeded:
-            spawn_model_prox("block" + str(self.block_num), sdf, "simulation", initial_pose, "world")
+            spawn_model_prox("block", sdf, "simulation", initial_pose, "world")
             rospy.sleep(0.5)
-            resp = get_model_state_prox("block" + str(self.block_num),'')
+            resp = get_model_state_prox("block",'')
             if (resp.success):
                 succeeded = True
             else:
